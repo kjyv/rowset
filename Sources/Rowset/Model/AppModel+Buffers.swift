@@ -2,12 +2,12 @@ import Foundation
 
 extension AppModel {
 
-    /// The buffers of the connection a tab belongs to.
+    /// The consoles of the connection a tab belongs to.
     func buffers(for tab: QueryTab) -> [SQLBuffer] {
         bufferStore.buffers(for: tab.connectionID)
     }
 
-    /// Writes what you typed back into the buffer.
+    /// Writes what you typed back into the console.
     ///
     /// The editor holds the working copy and the store holds the saved one. The store waits half
     /// a second before it writes the file, so typing costs one write and not one per key.
@@ -16,7 +16,7 @@ extension AppModel {
         bufferStore.setText(tab.sqlText, id: bufferID, for: tab.connectionID)
     }
 
-    /// Moves a console to another buffer, keeping what you typed in the one you leave.
+    /// Moves a tab to another console, keeping what you typed in the one you leave.
     func switchBuffer(_ tab: QueryTab, to bufferID: UUID) {
         guard tab.bufferID != bufferID else { return }
         persistBuffer(tab)
@@ -30,7 +30,7 @@ extension AppModel {
         saveSession()
     }
 
-    /// Opens a fresh buffer in this console.
+    /// Opens a fresh console in this tab.
     func newBuffer(_ tab: QueryTab) {
         persistBuffer(tab)
         guard let connection = connections[tab.connectionID] else { return }
@@ -44,7 +44,7 @@ extension AppModel {
         saveSession()
     }
 
-    /// Throws the buffer away and moves to the one you touched before it.
+    /// Throws the console away and moves to the one you touched before it.
     func deleteBuffer(_ tab: QueryTab) {
         guard let bufferID = tab.bufferID else { return }
         bufferStore.delete(id: bufferID, for: tab.connectionID)
@@ -62,7 +62,7 @@ extension AppModel {
         saveSession()
     }
 
-    /// The buffer a new console opens: the one you touched last, or a fresh one.
+    /// The console a new tab opens: the one you touched last, or a fresh one.
     func adoptBuffer(_ tab: QueryTab, connection: ConnectionModel, preferred: UUID? = nil) {
         if let preferred, let buffer = bufferStore.buffer(id: preferred, for: connection.id) {
             tab.bufferID = buffer.id

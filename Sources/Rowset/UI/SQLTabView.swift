@@ -120,16 +120,16 @@ struct SQLTabView: View {
         .background(.bar)
     }
 
-    /// The list of saved buffers of this connection, and the way to add or drop one.
+    /// The list of saved consoles of this connection, and the way to add or drop one.
     ///
-    /// A buffer takes its name from its first line, so switching needs no rename dialog and the
+    /// A console takes its name from its first line, so switching needs no rename dialog and the
     /// name stays right while you type.
     private var bufferMenu: some View {
         let buffers = model.buffers(for: tab)
 
         return Menu {
             if buffers.isEmpty {
-                Text("No saved query")
+                Text("No saved console")
             } else {
                 ForEach(buffers) { buffer in
                     Button {
@@ -146,24 +146,24 @@ struct SQLTabView: View {
 
             Divider()
 
-            Button("New Query") { model.newBuffer(tab) }
+            Button("New Console") { model.newBuffer(tab) }
                 .keyboardShortcut("n", modifiers: [.command, .option])
 
-            Button("Delete This Query", role: .destructive) { model.deleteBuffer(tab) }
+            Button("Delete This Console", role: .destructive) { model.deleteBuffer(tab) }
                 .disabled(tab.bufferID == nil)
         } label: {
             Label(currentBufferTitle, systemImage: "list.bullet.rectangle")
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help("Switch to another saved query, or start one")
+        .help("Switch to another saved console, or start one")
     }
 
     private var currentBufferTitle: String {
         let buffers = model.buffers(for: tab)
         guard let id = tab.bufferID,
               let buffer = buffers.first(where: { $0.id == id })
-        else { return "Query" }
+        else { return "Console" }
         return buffer.title
     }
 

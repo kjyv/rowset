@@ -184,7 +184,7 @@ struct BookmarkSection: View {
             Button("Disconnect") { Task { await model.disconnect(bookmarkID: bookmark.id) } }
             Button("Refresh") { Task { await connection?.refresh() } }
             Divider()
-            Button("New Query Tab") {
+            Button("New Console") {
                 if let connection { model.openSQLTab(connection: connection) }
             }
         case .connecting:

@@ -7,7 +7,7 @@ final class SQLBufferTitleTests: XCTestCase {
         SQLBuffer(text: text).title
     }
 
-    func testTheFirstLineNamesTheBuffer() {
+    func testTheFirstLineNamesTheConsole() {
         XCTAssertEqual(title("SELECT * FROM batch\nWHERE id = 1"), "SELECT * FROM batch")
     }
 
@@ -15,9 +15,9 @@ final class SQLBufferTitleTests: XCTestCase {
         XCTAssertEqual(title("\n\n   \nSELECT 1"), "SELECT 1")
     }
 
-    func testAnEmptyBufferSaysSo() {
-        XCTAssertEqual(title(""), "Empty query")
-        XCTAssertEqual(title("\n\n   "), "Empty query")
+    func testAnEmptyConsoleSaysSo() {
+        XCTAssertEqual(title(""), "Empty console")
+        XCTAssertEqual(title("\n\n   "), "Empty console")
     }
 
     func testALongLineIsCut() {
@@ -25,6 +25,46 @@ final class SQLBufferTitleTests: XCTestCase {
         let result = title(long)
         XCTAssertEqual(result.count, 45, "44 characters and an ellipsis")
         XCTAssertTrue(result.hasSuffix("…"))
+    }
+
+    // MARK: - A comment marker is not part of the name
+
+    func testALineCommentGivesItsTextAsTheName() {
+        XCTAssertEqual(title("-- daily counts\nSELECT 1"), "daily counts")
+    }
+
+    func testManyDashesAreAllStripped() {
+        XCTAssertEqual(title("----- daily counts"), "daily counts")
+    }
+
+    func testABlockCommentGivesItsTextAsTheName() {
+        XCTAssertEqual(title("/* daily counts */\nSELECT 1"), "daily counts")
+        XCTAssertEqual(title("/* daily counts\nSELECT 1"), "daily counts")
+    }
+
+    func testACommentWithNoTextIsSkipped() {
+        XCTAssertEqual(title("--\nSELECT 1"), "SELECT 1")
+        XCTAssertEqual(title("-- \n-- \nSELECT 1"), "SELECT 1")
+    }
+
+    func testAStatementThatIsNoCommentKeepsItsText() {
+        XCTAssertEqual(title("SELECT a - b"), "SELECT a - b", "a minus is not a comment")
+    }
+
+    func testTheDefaultShapeOfAConsole() {
+        let text = """
+            -- batch
+
+            SELECT *
+            FROM "public"."batch"
+            LIMIT 50;
+            """
+        XCTAssertEqual(title(text), "batch")
+
+        // The empty line keeps the comment out of the statement.
+        let statements = SQLStatementSplitter.statements(in: text)
+        XCTAssertEqual(statements.count, 1)
+        XCTAssertTrue(statements[0].text.hasPrefix("SELECT *"))
     }
 
     func testTheNameFollowsTheText() {
@@ -40,7 +80,7 @@ final class BufferStoreTests: XCTestCase {
 
     private func store() -> BufferStore {
         let url = FileManager.default.temporaryDirectory
-            .appending(path: "rowset-buffers-\(UUID().uuidString).json")
+            .appending(path: "rowset-consoles-\(UUID().uuidString).json")
         return BufferStore(fileURL: url)
     }
 
@@ -48,7 +88,7 @@ final class BufferStoreTests: XCTestCase {
         XCTAssertTrue(store().buffers(for: UUID()).isEmpty)
     }
 
-    func testABufferBelongsToOneConnection() {
+    func testAConsoleBelongsToOneConnection() {
         let store = store()
         let first = UUID()
         let second = UUID()
@@ -103,7 +143,7 @@ final class BufferStoreTests: XCTestCase {
         XCTAssertNil(store.buffer(id: buffer.id, for: connection))
     }
 
-    func testDroppingAConnectionDropsItsBuffers() {
+    func testDroppingAConnectionDropsItsConsoles() {
         let store = store()
         let connection = UUID()
         store.create(for: connection, text: "one")
@@ -113,7 +153,7 @@ final class BufferStoreTests: XCTestCase {
 
     func testWritingAndReadingTheFile() {
         let url = FileManager.default.temporaryDirectory
-            .appending(path: "rowset-buffers-\(UUID().uuidString).json")
+            .appending(path: "rowset-consoles-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }
 
         let connection = UUID()
@@ -128,7 +168,7 @@ final class BufferStoreTests: XCTestCase {
 
     func testABrokenFileLeavesAnEmptyStore() throws {
         let url = FileManager.default.temporaryDirectory
-            .appending(path: "rowset-buffers-\(UUID().uuidString).json")
+            .appending(path: "rowset-consoles-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }
         try "not json".write(to: url, atomically: true, encoding: .utf8)
 

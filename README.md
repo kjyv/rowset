@@ -16,8 +16,8 @@ connection, look at the tables, and read the first rows with a filter and a sort
   keeps the key order that the server sent.
 - Copies a value, a column name, or a whole row from the right click menu of a cell.
 - Changes a value and sends the edits together, after it shows you the SQL.
-- Runs SQL in a query tab, one statement at a time or all of them, with the words coloured and
-  the statement under the caret marked.
+- Runs SQL in a console, one statement at a time or all of them, with the words coloured and the
+  statement under the caret marked.
 - Remembers the window size and position.
 
 Postgres is the only driver for now. SQLite comes later.
@@ -124,27 +124,39 @@ To update the certificate bundle, run `./Scripts/fetch-rds-ca.sh`.
 | --- | --- |
 | Bookmarks | `~/Library/Application Support/Rowset/bookmarks.json` |
 | Session | `~/Library/Application Support/Rowset/session.json` |
-| Saved queries | `~/Library/Application Support/Rowset/buffers.json` |
+| Saved consoles | `~/Library/Application Support/Rowset/consoles.json` |
 | Passwords | The login keychain, service `tech.alcemy.Rowset` |
 | Window frame and row limit | `UserDefaults` for `tech.alcemy.Rowset` |
 
 The bookmark file is plain JSON. You can edit it by hand and copy it to another machine.
 
-## The query tab
+## The console
 
 The editor holds as many statements as you like.
 
-### Saved queries
+### Saved consoles
 
-The button beside **Run All** opens the list of saved queries of this connection. Pick one to
+The button beside **Run All** opens the list of saved consoles of this connection. Pick one to
 switch to it, or start a new one, or drop the one you are in. Each connection keeps its own list,
-so the queries of one database never appear under another.
+so the consoles of one database never appear under another.
 
-A query takes its name from its first line. There is no rename, because the name follows the text
-while you type.
+A console takes its name from its first line, with the comment marker left off. There is no
+rename, because the name follows the text while you type. A new console starts like this, and
+shows up in the list as **batch**:
 
-Queries live in `~/Library/Application Support/Rowset/buffers.json` and outlive the tab that
-showed them. Deleting a connection deletes its queries with it.
+```sql
+-- batch
+
+SELECT *
+FROM "public"."batch"
+LIMIT 50;
+```
+
+The empty line after the comment keeps it out of the statement, so the band under the caret
+covers the SELECT alone.
+
+Consoles live in `~/Library/Application Support/Rowset/consoles.json` and outlive the tab that
+showed them. Deleting a connection deletes its consoles with it.
 
 | Key | What runs |
 | --- | --- |

@@ -426,13 +426,29 @@ final class AppModel {
         editedBookmark = copy
     }
 
-    /// The statement a new query console starts with.
+    /// What a new console starts with.
     ///
-    /// A real table name beats a placeholder, so the console picks one the connection knows.
+    /// The first line is a comment, because the list takes its name from there. A real table name
+    /// beats a placeholder, so the console picks one the connection knows.
+    ///
+    /// The empty line after the comment matters. It keeps the comment out of the statement, so
+    /// the band under the caret covers the SELECT alone.
     func defaultSQL(for connection: ConnectionModel) -> String {
         let table = selectedTableRef(in: connection) ?? connection.allTables.first
-        guard let table else { return "SELECT *\nFROM public.your_table\nLIMIT 50;" }
+
+        guard let table else {
+            return """
+                -- New console
+
+                SELECT *
+                FROM public.your_table
+                LIMIT 50;
+                """
+        }
+
         return """
+            -- \(table.name)
+
             SELECT *
             FROM \(SQLBuilder.qualifiedName(schema: table.schema, table: table.name))
             LIMIT 50;

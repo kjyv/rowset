@@ -27,7 +27,7 @@ struct RowsetApp: App {
                 }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
 
-                Button("New Query Tab") {
+                Button("New Console") {
                     if let connection = model.activeConnection {
                         model.openSQLTab(connection: connection)
                     }

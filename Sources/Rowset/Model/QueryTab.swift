@@ -178,7 +178,7 @@ final class QueryTab: Identifiable {
     var title: String {
         switch kind {
         case .table(_, let name): name
-        case .sql: "Query"
+        case .sql: "Console"
         }
     }
 

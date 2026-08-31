@@ -1,9 +1,10 @@
 import Foundation
 import Observation
 
-/// One saved editor buffer of a query console.
+/// One saved console: the text of an editor and nothing more.
 ///
-/// A buffer belongs to a connection, so the queries of one database never show up under another.
+/// A console belongs to a connection, so the consoles of one database never show up under
+/// another.
 struct SQLBuffer: Codable, Identifiable, Hashable, Sendable {
     var id: UUID = UUID()
     var text: String = ""
@@ -12,30 +13,44 @@ struct SQLBuffer: Codable, Identifiable, Hashable, Sendable {
 
     /// The name in the list, taken from the text itself.
     ///
-    /// A name of its own would need a dialog and a rename. The first line of the query says what
-    /// it is, and it stays right while you type.
+    /// A name of its own would need a dialog and a rename. The first line says what the console
+    /// is, and it stays right while you type. A comment marker is not part of the name, so a
+    /// first line of `-- daily counts` reads as `daily counts`.
     var title: String {
         let firstLine = text
             .split(whereSeparator: \.isNewline)
-            .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            .first { !Self.strippedComment(String($0)).isEmpty }
 
-        guard let firstLine else { return "Empty query" }
+        guard let firstLine else { return "Empty console" }
 
-        let flattened = firstLine
-            .trimmingCharacters(in: .whitespaces)
+        let flattened = Self.strippedComment(String(firstLine))
             .replacingOccurrences(of: "\t", with: " ")
         return flattened.count > 44 ? String(flattened.prefix(44)) + "…" : flattened
     }
+
+    /// Takes the comment markers off a line and trims what is left.
+    static func strippedComment(_ line: String) -> String {
+        var text = line.trimmingCharacters(in: .whitespaces)
+
+        if text.hasPrefix("/*") {
+            text = String(text.dropFirst(2))
+            if text.hasSuffix("*/") { text = String(text.dropLast(2)) }
+        } else if text.hasPrefix("--") {
+            text = String(text.drop(while: { $0 == "-" }))
+        }
+
+        return text.trimmingCharacters(in: .whitespaces)
+    }
 }
 
-/// Keeps the buffers of every connection.
+/// Keeps the consoles of every connection.
 ///
-/// The file is `~/Library/Application Support/Rowset/buffers.json`. A query is work, so it
+/// The file is `~/Library/Application Support/Rowset/consoles.json`. A console is work, so it
 /// outlives the tab that showed it and the session it was typed in.
 @MainActor
 @Observable
 final class BufferStore {
-    /// The buffers of each connection, by the text form of its id.
+    /// The consoles of each connection, by the text form of its id.
     private(set) var buffers: [String: [SQLBuffer]] = [:]
 
     private let fileURL: URL
@@ -48,12 +63,12 @@ final class BufferStore {
 
     static func defaultFileURL() -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return base.appending(path: "Rowset/buffers.json")
+        return base.appending(path: "Rowset/consoles.json")
     }
 
     // MARK: - Reading
 
-    /// The buffers of one connection, the one you touched last at the top.
+    /// The consoles of one connection, the one you touched last at the top.
     func buffers(for bookmarkID: UUID) -> [SQLBuffer] {
         (buffers[bookmarkID.uuidString] ?? []).sorted { $0.updatedAt > $1.updatedAt }
     }
@@ -72,7 +87,7 @@ final class BufferStore {
         return buffer
     }
 
-    /// Writes the text of a buffer. An unchanged text touches nothing, so the order stays put.
+    /// Writes the text of a console. An unchanged text touches nothing, so the order stays put.
     func setText(_ text: String, id: UUID, for bookmarkID: UUID) {
         let key = bookmarkID.uuidString
         guard let index = buffers[key]?.firstIndex(where: { $0.id == id }) else { return }
@@ -98,10 +113,19 @@ final class BufferStore {
     private func load() {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        guard let data = try? Data(contentsOf: fileURL),
-              let stored = try? decoder.decode([String: [SQLBuffer]].self, from: data)
-        else { return }
-        buffers = stored
+
+        // The file was called buffers.json before the name settled on console.
+        let candidates = [fileURL, fileURL.deletingLastPathComponent()
+            .appending(path: "buffers.json")]
+
+        for url in candidates {
+            guard let data = try? Data(contentsOf: url),
+                  let stored = try? decoder.decode([String: [SQLBuffer]].self, from: data)
+            else { continue }
+            buffers = stored
+            if url != fileURL { save() }
+            return
+        }
     }
 
     /// Writes after a short wait, so typing costs one write and not one per key.
@@ -130,7 +154,7 @@ final class BufferStore {
             encoder.dateEncodingStrategy = .iso8601
             try encoder.encode(buffers).write(to: fileURL, options: .atomic)
         } catch {
-            // A lost buffer list is not worth an alert. The bookmarks live in their own file.
+            // A lost console list is not worth an alert. The bookmarks live in their own file.
         }
     }
 }

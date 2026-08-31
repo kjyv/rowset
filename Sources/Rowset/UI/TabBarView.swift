@@ -41,7 +41,7 @@ struct TabBarView: View {
         }
         .buttonStyle(.borderless)
         .disabled(model.activeConnection == nil)
-        .help("New query tab (Command-T)")
+        .help("New console (Command-T)")
     }
 }
 
