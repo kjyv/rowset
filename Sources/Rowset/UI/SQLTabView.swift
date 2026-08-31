@@ -85,12 +85,6 @@ struct SQLTabView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ResultPane(model: model, tab: tab, result: result)
-                    .overlay(alignment: .bottom) {
-                        if tab.showsPageBar {
-                            PageBar(model: model, tab: tab)
-                                .padding(.bottom, 14)
-                        }
-                    }
             }
         } else {
             Text("Write a statement, then press Command-Return.")

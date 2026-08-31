@@ -150,12 +150,6 @@ struct TableTabView: View {
                 ResultPane(
                     model: model, tab: tab, result: result, editable: tab.isEditable,
                     onSortChange: sortChanged)
-                    .overlay(alignment: .bottom) {
-                        if tab.showsPageBar {
-                            PageBar(model: model, tab: tab)
-                                .padding(.bottom, 14)
-                        }
-                    }
             }
         } else {
             ProgressView()

@@ -67,7 +67,21 @@ struct ResultPane: View {
         return (tab, address)
     }
 
+    /// The grid, with the page widget floating at its own bottom edge.
+    ///
+    /// The widget belongs to the grid and not to the pane. On the pane it sat at the bottom of
+    /// the value view once that opened, which is not where the rows are.
     private var grid: some View {
+        table
+            .overlay(alignment: .bottom) {
+                if tab.showsPageBar {
+                    PageBar(model: model, tab: tab)
+                        .padding(.bottom, 14)
+                }
+            }
+    }
+
+    private var table: some View {
         ResultTableView(
             result: result,
             sortOrder: $tab.sortOrder,
