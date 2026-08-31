@@ -30,6 +30,61 @@ final class SQLStatementSplitterTests: XCTestCase {
         XCTAssertTrue(texts(";;;").isEmpty)
     }
 
+    // MARK: - An empty line ends a statement
+
+    func testAnEmptyLineSplitsWithoutASemicolon() {
+        XCTAssertEqual(texts("SELECT 1\n\nSELECT 2"), ["SELECT 1", "SELECT 2"])
+    }
+
+    /// A statement is normally written over several lines. One line break must not split it, or
+    /// every SELECT with its FROM on the next line would fall apart.
+    func testOneLineBreakDoesNotSplit() {
+        XCTAssertEqual(
+            texts("SELECT *\nFROM component\nWHERE id = 1"),
+            ["SELECT *\nFROM component\nWHERE id = 1"])
+    }
+
+    func testAnEmptyLineOfSpacesStillSplits() {
+        XCTAssertEqual(texts("SELECT 1\n   \t \nSELECT 2"), ["SELECT 1", "SELECT 2"])
+    }
+
+    func testManyEmptyLinesSplitOnce() {
+        XCTAssertEqual(texts("SELECT 1\n\n\n\nSELECT 2"), ["SELECT 1", "SELECT 2"])
+    }
+
+    func testASemicolonAndAnEmptyLineTogether() {
+        XCTAssertEqual(texts("SELECT 1;\n\nSELECT 2"), ["SELECT 1", "SELECT 2"])
+    }
+
+    func testAMultiLineStatementBetweenEmptyLines() {
+        let sql = """
+            SELECT pg_terminate_backend(pid)
+              FROM pg_stat_activity
+             WHERE application_name = 'cube_norman'
+
+            SELECT 1
+            """
+        let statements = texts(sql)
+        XCTAssertEqual(statements.count, 2)
+        XCTAssertTrue(statements[0].hasPrefix("SELECT pg_terminate_backend"))
+        XCTAssertTrue(statements[0].contains("cube_norman'"), "the whole statement stays whole")
+        XCTAssertEqual(statements[1], "SELECT 1")
+    }
+
+    /// An empty line inside a literal is part of that literal, not a break between statements.
+    func testAnEmptyLineInsideAStringDoesNotSplit() {
+        XCTAssertEqual(texts("SELECT 'a\n\nb'"), ["SELECT 'a\n\nb'"])
+    }
+
+    func testAnEmptyLineInsideADollarQuoteDoesNotSplit() {
+        let sql = "CREATE FUNCTION f() RETURNS int AS $$\nBEGIN\n\nRETURN 1;\n\nEND\n$$ LANGUAGE plpgsql"
+        XCTAssertEqual(SQLStatementSplitter.statements(in: sql).count, 1)
+    }
+
+    func testAnEmptyLineInsideABlockCommentDoesNotSplit() {
+        XCTAssertEqual(texts("SELECT /* a\n\nb */ 1"), ["SELECT /* a\n\nb */ 1"])
+    }
+
     // MARK: - Where a naive split on the semicolon goes wrong
 
     func testASemicolonInsideAStringDoesNotSplit() {

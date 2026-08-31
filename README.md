@@ -139,7 +139,24 @@ The editor holds as many statements as you like.
 | Shift-Command-Return | every statement, one after the other |
 
 The statement the caret is in carries a light band, so you always see what Command-Return will
-send. A statement needs no closing semicolon, which matters for the last one.
+send.
+
+**A semicolon is never needed.** Two things end a statement: a semicolon, and an empty line.
+Write this and both run on their own:
+
+```sql
+SELECT pg_terminate_backend(pid)
+  FROM pg_stat_activity
+ WHERE application_name = 'cube_norman'
+
+SELECT 1
+```
+
+A single line break does not end a statement, and must not. A statement is normally written over
+several lines, so a SELECT with its FROM on the next line would fall apart.
+
+An empty line inside a string, a comment or a dollar quoted function body splits nothing. The
+lexer reports each of those as one piece, and the rule only looks between pieces.
 
 **Run All** stops at the first failure and leaves the result of the last statement on screen. The
 statements do not share a transaction, which is what a console does.

@@ -10,9 +10,18 @@ struct SQLStatement: Hashable, Sendable {
 
 /// Cuts the text of the editor into statements.
 ///
+/// Two things end a statement: a semicolon, and an empty line.
+///
 /// A split on every semicolon is wrong, because a semicolon also appears inside a string, inside
 /// a quoted name, inside a comment and inside a dollar quoted body. `SQLLexer` has already read
 /// past all of those, so every semicolon it reports as punctuation is a real one.
+///
+/// An empty line ends a statement as well, so a semicolon is never needed. A single line break
+/// does not, and must not: a statement is normally written over several lines, and every SELECT
+/// with its FROM on the next line would fall apart.
+///
+/// An empty line inside a string, a comment or a dollar quoted body splits nothing, because the
+/// lexer reports each of those as one token and this only looks between tokens.
 enum SQLStatementSplitter {
 
     static func statements(in text: String) -> [SQLStatement] {
@@ -43,6 +52,13 @@ enum SQLStatementSplitter {
                 continue
             }
 
+            // An empty line before this token closes whatever came before it.
+            if start != nil, isBlankLine(in: source, from: end, to: token.range.location) {
+                finish(includingSemicolon: false)
+                start = nil
+                hasCode = false
+            }
+
             if start == nil { start = token.range.location }
             end = token.range.upperBound
             // A statement of comments alone is nothing to run.
@@ -52,6 +68,16 @@ enum SQLStatementSplitter {
         // The last statement needs no semicolon.
         finish(includingSemicolon: false)
         return statements
+    }
+
+    /// True when the text between two tokens holds an empty line.
+    ///
+    /// Two line breaks make one empty line between them. Spaces and tabs on that line change
+    /// nothing, because a line of white space still reads as empty.
+    private static func isBlankLine(in source: NSString, from start: Int, to end: Int) -> Bool {
+        guard end > start, start >= 0, end <= source.length else { return false }
+        let gap = source.substring(with: NSRange(location: start, length: end - start))
+        return gap.filter(\.isNewline).count >= 2
     }
 
     /// The statement the caret sits in.
