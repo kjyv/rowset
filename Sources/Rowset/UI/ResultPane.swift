@@ -25,6 +25,7 @@ struct ResultPane: View {
             result: result,
             sortOrder: $tab.sortOrder,
             selectedCell: $tab.selectedCell,
+            revealColumn: $tab.revealColumn,
             onOpenValue: { tab.isInspectorVisible = true })
     }
 }

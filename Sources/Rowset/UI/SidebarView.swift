@@ -225,6 +225,9 @@ struct TreeNodeRow: View {
             if node.kind.isTableLike {
                 Button("Open") { open() }
             }
+            if case .column = node.kind {
+                Button("Show in Table") { open() }
+            }
             Button("Copy Name") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(node.kind.title, forType: .string)
@@ -243,7 +246,17 @@ struct TreeNodeRow: View {
         case .table(let schema, let name), .view(let schema, let name):
             let tab = model.openTable(schema: schema, name: name, connection: connection)
             Task { await model.runTableQuery(tab) }
-        default:
+
+        case .column(let schema, let table, let name, _, _):
+            // Opens the table, or moves to the tab that already shows it, then jumps sideways
+            // to the column you picked.
+            let tab = model.openTable(schema: schema, name: table, connection: connection)
+            tab.revealColumn = name
+            if tab.result == nil {
+                Task { await model.runTableQuery(tab) }
+            }
+
+        case .schema:
             node.isExpanded.toggle()
         }
     }

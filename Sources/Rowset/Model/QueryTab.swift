@@ -44,6 +44,8 @@ final class QueryTab: Identifiable {
     /// Shared state.
     var rowLimitText: String
     var selectedCell: CellAddress?
+    /// A column to scroll to. The grid clears it once it jumped there.
+    var revealColumn: String?
     var isInspectorVisible = true
     var result: ResultSet?
     var errorText: String?

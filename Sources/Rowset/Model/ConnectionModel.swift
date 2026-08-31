@@ -112,8 +112,12 @@ final class ConnectionModel: Identifiable {
         let rows = try await session.queryStrings(CatalogQueries.columns(schema: schema, table: table))
         return rows.compactMap { row in
             guard row.count >= 3 else { return nil }
-            return TreeNode(
-                kind: .column(name: row[0], type: row[1], nullable: row[2].uppercased() == "YES"))
+            return TreeNode(kind: .column(
+                schema: schema,
+                table: table,
+                name: row[0],
+                type: row[1],
+                nullable: row[2].uppercased() == "YES"))
         }
     }
 

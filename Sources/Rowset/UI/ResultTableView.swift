@@ -11,6 +11,8 @@ struct ResultTableView: NSViewRepresentable {
     let result: ResultSet
     @Binding var sortOrder: [ColumnComparator]
     @Binding var selectedCell: CellAddress?
+    /// A column to scroll to once. The grid clears it after the jump.
+    @Binding var revealColumn: String?
     /// Runs when you double click a cell.
     var onOpenValue: () -> Void = {}
 
@@ -21,7 +23,7 @@ struct ResultTableView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSScrollView {
         let coordinator = context.coordinator
 
-        let tableView = NSTableView()
+        let tableView = OverdrawTableView()
         tableView.dataSource = coordinator
         tableView.delegate = coordinator
         tableView.target = coordinator
@@ -111,6 +113,8 @@ struct ResultTableView: NSViewRepresentable {
                 return
             }
 
+            revealRequestedColumn()
+
             if shownSelection != parent.selectedCell {
                 let previous = shownSelection
                 shownSelection = parent.selectedCell
@@ -119,6 +123,26 @@ struct ResultTableView: NSViewRepresentable {
             }
 
             syncSortDescriptors()
+        }
+
+        /// Scrolls sideways to the column that the sidebar asked for.
+        private func revealRequestedColumn() {
+            guard let tableView, let wanted = parent.revealColumn else { return }
+
+            var mark: CellAddress?
+            if let index = parent.result.columns.firstIndex(where: { $0.name == wanted }) {
+                tableView.scrollColumnToVisible(index)
+                // Mark the column, so you find it again among thirty others.
+                if let first = parent.result.rows.first {
+                    mark = CellAddress(rowID: first.id, columnID: parent.result.columns[index].id)
+                }
+            }
+
+            // SwiftUI forbids a write while it draws, so the answer waits for the next turn.
+            Task { @MainActor in
+                self.parent.revealColumn = nil
+                if let mark { self.parent.selectedCell = mark }
+            }
         }
 
         /// Repaints one row, so a click does not reload the whole grid.
@@ -305,31 +329,54 @@ private final class BlockBox {
 /// One cell. It fills the whole row and the whole column, so no point of the grid is dead and no
 /// stripe of background shows between the selection and the column line.
 ///
-/// The cell draws its own background and its own separator. A drawn color follows a switch
-/// between the light and the dark appearance. A `CGColor` on a layer does not.
-private final class GridCellView: NSTableCellView {
+/// The cell holds no `NSTextField`. A text field brings Auto Layout, its own drawing and its own
+/// tracking, and the table builds one per visible cell on every scroll step. This view draws the
+/// string itself with attributes it built once, which is what makes a long scroll smooth.
+///
+/// The cost is that the text here takes no selection. The value pane reads and copies instead.
+private final class GridCellView: NSView {
     static let identifier = NSUserInterfaceItemIdentifier("RowsetGridCell")
 
-    private let label = NSTextField(labelWithString: "")
+    private enum Style: Hashable {
+        case normal, null, raw
+    }
+
+    private static let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+
+    private static let italicFont: NSFont = {
+        let descriptor = font.fontDescriptor.withSymbolicTraits(.italic)
+        return NSFont(descriptor: descriptor, size: 12) ?? font
+    }()
+
+    private static let lineHeight: CGFloat = ceil(font.ascender - font.descender + font.leading)
+
+    private static let paragraphStyle: NSParagraphStyle = {
+        let style = NSMutableParagraphStyle()
+        style.lineBreakMode = .byTruncatingTail
+        return style
+    }()
+
+    /// One dictionary per look. Building these per cell would allocate on every scroll step.
+    private static let attributes: [Style: [NSAttributedString.Key: Any]] = [
+        .normal: [
+            .font: font, .foregroundColor: NSColor.labelColor, .paragraphStyle: paragraphStyle,
+        ],
+        .null: [
+            .font: italicFont, .foregroundColor: NSColor.secondaryLabelColor,
+            .paragraphStyle: paragraphStyle,
+        ],
+        .raw: [
+            .font: font, .foregroundColor: NSColor.systemOrange, .paragraphStyle: paragraphStyle,
+        ],
+    ]
+
+    private var text = ""
+    private var style: Style = .normal
     private var isSelectedCell = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         identifier = Self.identifier
-
-        label.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        label.lineBreakMode = .byTruncatingTail
-        label.usesSingleLineMode = true
-        label.cell?.truncatesLastVisibleLine = true
-        label.drawsBackground = false
-        label.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(label)
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
-            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -7),
-            label.centerYAnchor.constraint(equalTo: centerYAnchor),
-        ])
-        textField = label
     }
 
     convenience init() {
@@ -339,9 +386,9 @@ private final class GridCellView: NSTableCellView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not supported") }
 
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
+    override var isFlipped: Bool { true }
 
+    override func draw(_ dirtyRect: NSRect) {
         if isSelectedCell {
             NSColor.controlAccentColor.withAlphaComponent(0.25).setFill()
             bounds.fill()
@@ -349,18 +396,26 @@ private final class GridCellView: NSTableCellView {
 
         NSColor.gridColor.setFill()
         NSRect(x: bounds.maxX - 1, y: 0, width: 1, height: bounds.height).fill()
+
+        guard !text.isEmpty, bounds.width > 14 else { return }
+        let top = ((bounds.height - Self.lineHeight) / 2).rounded()
+        let textRect = NSRect(
+            x: 6, y: top, width: bounds.width - 13, height: Self.lineHeight)
+        (text as NSString).draw(
+            with: textRect,
+            options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
+            attributes: Self.attributes[style],
+            context: nil)
     }
 
     func configure(preview: String, isNull: Bool, isRaw: Bool, isSelected: Bool) {
-        label.stringValue = isNull ? "NULL" : preview
-        label.textColor = isNull ? .secondaryLabelColor : (isRaw ? .systemOrange : .labelColor)
+        let newText = isNull ? "NULL" : preview
+        let newStyle: Style = isNull ? .null : (isRaw ? .raw : .normal)
 
-        var traits = NSFontDescriptor.SymbolicTraits()
-        if isNull { traits.insert(.italic) }
-        let base = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        label.font = NSFont(
-            descriptor: base.fontDescriptor.withSymbolicTraits(traits), size: 12) ?? base
-
+        // A reused cell often gets what it already shows. Skip the redraw then.
+        guard newText != text || newStyle != style || isSelected != isSelectedCell else { return }
+        text = newText
+        style = newStyle
         isSelectedCell = isSelected
         needsDisplay = true
     }
@@ -370,5 +425,20 @@ enum Clipboard {
     static func write(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+}
+
+/// A table that prepares many more rows than the window shows.
+///
+/// AppKit only builds the cells it is about to draw. On a fast scroll it then builds them while
+/// you drag, and the grid stutters. `prepareContent` widens the band that AppKit fills, so the
+/// rows are ready before they arrive. The cost is memory for the extra cell views.
+final class OverdrawTableView: NSTableView {
+    /// How far above and below the window AppKit prepares, in points.
+    /// At a row height of 20 this is about 100 rows on each side.
+    static let overdraw: CGFloat = 2_000
+
+    override func prepareContent(in rect: NSRect) {
+        super.prepareContent(in: rect.insetBy(dx: 0, dy: -Self.overdraw))
     }
 }

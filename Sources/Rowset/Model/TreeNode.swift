@@ -6,7 +6,7 @@ enum TreeNodeKind: Hashable, Sendable {
     case schema(name: String)
     case table(schema: String, name: String)
     case view(schema: String, name: String)
-    case column(name: String, type: String, nullable: Bool)
+    case column(schema: String, table: String, name: String, type: String, nullable: Bool)
 
     var isTableLike: Bool {
         switch self {
@@ -36,14 +36,14 @@ enum TreeNodeKind: Hashable, Sendable {
         case .schema(let name): name
         case .table(_, let name): name
         case .view(_, let name): name
-        case .column(let name, _, _): name
+        case .column(_, _, let name, _, _): name
         }
     }
 
     /// The grey text after the title.
     var detail: String? {
         switch self {
-        case .column(_, let type, let nullable): nullable ? type : "\(type), not null"
+        case .column(_, _, _, let type, let nullable): nullable ? type : "\(type), not null"
         case .view: "view"
         default: nil
         }
