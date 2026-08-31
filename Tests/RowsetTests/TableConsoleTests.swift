@@ -25,26 +25,34 @@ final class TableConsoleTests: XCTestCase {
 
     func testTheConsoleTakesThePlainTableQuery() {
         let model = model()
-        let tab = tableTab()
-        XCTAssertEqual(model.generatedSQL(for: tab), """
-            SELECT * FROM "public"."batch"
-            LIMIT 50;
-            """)
+        XCTAssertEqual(
+            model.generatedSQL(for: tableTab()), "SELECT * FROM \"public\".\"batch\"")
     }
 
-    func testTheConsoleTakesTheFilterTheSortAndTheLimit() {
+    func testTheConsoleTakesTheFilterAndTheSort() {
         let model = model()
         let tab = tableTab()
         tab.filterText = "slug = 'x'"
         tab.orderByText = "created_at DESC"
-        tab.rowLimit = 200
 
         XCTAssertEqual(model.generatedSQL(for: tab), """
             SELECT * FROM "public"."batch"
             WHERE slug = 'x'
             ORDER BY created_at DESC
-            LIMIT 200;
             """)
+    }
+
+    /// The widget puts the LIMIT and the OFFSET around the statement, so one written into the
+    /// statement would fight it.
+    func testTheConsoleQueryCarriesNoPageOfItsOwn() {
+        let model = model()
+        let tab = tableTab()
+        tab.rowLimit = 200
+        tab.pageOffset = 400
+
+        let sql = model.generatedSQL(for: tab)
+        XCTAssertFalse(sql.contains("LIMIT"))
+        XCTAssertFalse(sql.contains("OFFSET"))
     }
 
     /// What the console starts with must be a statement the splitter can run.
@@ -59,45 +67,56 @@ final class TableConsoleTests: XCTestCase {
 
     // MARK: - The tab becomes a console
 
-    func testTheTabTurnsIntoAConsole() {
+    func testTheTabTurnsIntoAConsole() async {
         let model = model()
         let tab = tableTab()
         XCTAssertEqual(tab.title, "batch")
 
-        model.openConsole(on: tab)
+        await model.openConsole(on: tab)
         XCTAssertEqual(tab.kind, .sql, "it is a console tab now, and runs the same code as one")
         XCTAssertEqual(tab.title, "Console")
     }
 
-    func testTheConsoleHoldsTheQueryOfTheFields() {
+    /// The page you were on must carry over, or the console opens on other rows than the table
+    /// was showing.
+    func testThePageCarriesOver() async {
+        let model = model()
+        let tab = tableTab()
+        tab.pageOffset = 150
+
+        await model.openConsole(on: tab)
+        XCTAssertEqual(tab.pageOffset, 150)
+    }
+
+    func testTheConsoleHoldsTheQueryOfTheFields() async {
         let model = model()
         let tab = tableTab()
         tab.filterText = "slug = 'x'"
         tab.orderByText = "created_at DESC"
 
-        model.openConsole(on: tab)
+        await model.openConsole(on: tab)
         XCTAssertTrue(tab.sqlText.contains("WHERE slug = 'x'"))
         XCTAssertTrue(tab.sqlText.contains("ORDER BY created_at DESC"))
         XCTAssertTrue(tab.sqlText.hasPrefix("-- batch"), "a title line names it in the list")
     }
 
     /// The query joins the saved consoles of the connection, so it outlives the tab.
-    func testTheQueryIsSavedAsAConsoleOfTheConnection() {
+    func testTheQueryIsSavedAsAConsoleOfTheConnection() async {
         let model = model()
         let tab = tableTab()
         XCTAssertTrue(model.buffers(for: tab).isEmpty)
 
-        model.openConsole(on: tab)
+        await model.openConsole(on: tab)
         let saved = model.buffers(for: tab)
         XCTAssertEqual(saved.count, 1)
         XCTAssertEqual(saved.first?.id, tab.bufferID)
         XCTAssertEqual(saved.first?.title, "batch", "the title line gives it a name")
     }
 
-    func testTheCommentLineIsNotPartOfTheStatement() {
+    func testTheCommentLineIsNotPartOfTheStatement() async {
         let model = model()
         let tab = tableTab()
-        model.openConsole(on: tab)
+        await model.openConsole(on: tab)
 
         let statements = SQLStatementSplitter.statements(in: tab.sqlText)
         XCTAssertEqual(statements.count, 1)
@@ -106,17 +125,17 @@ final class TableConsoleTests: XCTestCase {
 
     /// A console statement may join two tables or rename a column, and an UPDATE built from such
     /// a result would hit the wrong rows.
-    func testAConsoleIsNotEditable() {
+    func testAConsoleIsNotEditable() async {
         let model = model()
         let tab = tableTab()
         XCTAssertTrue(tab.isEditable)
 
-        model.openConsole(on: tab)
+        await model.openConsole(on: tab)
         XCTAssertFalse(tab.isEditable)
         XCTAssertTrue(tab.primaryKey.isEmpty, "the key of the old table is gone with it")
     }
 
-    func testEditsAreDroppedOnTheWay() {
+    func testEditsAreDroppedOnTheWay() async {
         let model = model()
         let tab = tableTab()
 
@@ -127,27 +146,27 @@ final class TableConsoleTests: XCTestCase {
         tab.setEdit("2", at: CellAddress(rowID: 0, columnID: 0))
         XCTAssertTrue(tab.hasEdits)
 
-        model.openConsole(on: tab)
+        await model.openConsole(on: tab)
         XCTAssertFalse(tab.hasEdits, "a change that can no longer be sent must not linger")
     }
 
-    func testAConsoleTabIsNotConvertedAgain() {
+    func testAConsoleTabIsNotConvertedAgain() async {
         let model = model()
         let tab = QueryTab(
             connectionID: UUID(), connectionName: "t", kind: .sql, rowLimit: 50)
         tab.sqlText = "SELECT 1"
 
-        model.openConsole(on: tab)
+        await model.openConsole(on: tab)
         XCTAssertEqual(tab.sqlText, "SELECT 1", "nothing to convert, nothing changed")
         XCTAssertTrue(model.buffers(for: tab).isEmpty)
     }
 
     // MARK: - The session
 
-    func testAConvertedTabIsWrittenDownAsAConsole() {
+    func testAConvertedTabIsWrittenDownAsAConsole() async {
         let model = model()
         let tab = tableTab()
-        model.openConsole(on: tab)
+        await model.openConsole(on: tab)
 
         let state = tab.state
         XCTAssertTrue(state.isSQLTab)

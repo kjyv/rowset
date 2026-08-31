@@ -210,9 +210,11 @@ was showing:
 
 SELECT * FROM "public"."batch"
 WHERE slug = 'x'
-ORDER BY created_at DESC
-LIMIT 200;
+ORDER BY created_at DESC;
 ```
+
+The statement carries no LIMIT and no OFFSET. The page widget puts those around it, and the page
+you were on carries over, so the console opens on the same rows the table was showing.
 
 The tab **becomes** a console tab. It runs the same code as one opened from the tab bar, the
 title changes to Console, and the query joins the saved consoles of that connection under the

@@ -139,6 +139,24 @@ enum SQLBuilder {
         return sql
     }
 
+    /// Builds `SELECT * FROM "s"."t" [WHERE ...] [ORDER BY ...]`, with no page of its own.
+    ///
+    /// A console gets this one. The page widget adds the LIMIT and the OFFSET around it, so a
+    /// LIMIT written in here would fight the widget.
+    static func selectAll(
+        schema: String, table: String, filter: String, orderBy: String
+    ) -> String {
+        var sql = "SELECT * FROM \(qualifiedName(schema: schema, table: table))"
+
+        let trimmedFilter = filter.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedFilter.isEmpty { sql += "\nWHERE \(trimmedFilter)" }
+
+        let trimmedOrder = orderBy.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedOrder.isEmpty { sql += "\nORDER BY \(trimmedOrder)" }
+
+        return sql
+    }
+
     /// The name the page wrapper gives the statement it wraps.
     ///
     /// A subquery in a FROM needs a name, and this one is unlikely to clash with a real table.

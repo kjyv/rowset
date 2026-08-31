@@ -86,7 +86,7 @@ struct TableTabView: View {
     /// Turns this tab into a console on the query the fields stand for.
     private var consoleButton: some View {
         Button {
-            model.openConsole(on: tab)
+            Task { await model.openConsole(on: tab) }
         } label: {
             Image(systemName: "apple.terminal")
                 .font(.system(size: 12, weight: .medium))

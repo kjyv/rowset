@@ -81,16 +81,15 @@ extension AppModel {
 
     /// The statement that the filter fields of a table tab stand for.
     ///
-    /// This is the same SELECT the table runs, so opening the console shows you what you were
-    /// already looking at and lets you take it further.
+    /// It carries the filter and the sort and no page of its own. The page widget puts the LIMIT
+    /// and the OFFSET around it, so a LIMIT written in here would fight the widget.
     func generatedSQL(for tab: QueryTab) -> String {
         guard case .table(let schema, let name) = tab.kind else { return tab.sqlText }
-        return SQLBuilder.selectRows(
+        return SQLBuilder.selectAll(
             schema: schema,
             table: name,
             filter: tab.filterText,
-            orderBy: tab.orderByText,
-            limit: tab.rowLimit) + ";"
+            orderBy: tab.orderByText)
     }
 
     /// Turns a table tab into a console on the query it was showing.
@@ -101,17 +100,28 @@ extension AppModel {
     ///
     /// The query is saved as a console of this connection, so it stands beside the others in the
     /// list and outlives the tab.
-    func openConsole(on tab: QueryTab) {
+    func openConsole(on tab: QueryTab) async {
         guard case .table(_, let name) = tab.kind else { return }
 
-        let sql = "-- \(name)\n\n" + generatedSQL(for: tab)
+        let statement = generatedSQL(for: tab)
+        let sql = "-- \(name)\n\n" + statement + ";"
         let buffer = bufferStore.create(for: tab.connectionID, text: sql)
+
+        // The page you were on carries over, so the console opens on the same rows.
+        let keptOffset = tab.pageOffset
 
         tab.becomeConsole()
         tab.bufferID = buffer.id
         tab.sqlText = sql
         tab.sqlCaret = 0
+        tab.resetPaging()
+        tab.pageOffset = keptOffset
         saveSession()
+
+        // The tab is a console whatever happens next. Running the page needs a connection, and a
+        // dropped one must not leave the tab half converted.
+        guard let connection = connections[tab.connectionID] else { return }
+        await runPage(of: statement, in: tab, connection: connection)
     }
 
     /// Runs the statement the caret is in.
