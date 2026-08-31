@@ -170,8 +170,12 @@ extension AppModel {
               let statement = tab.currentStatement
         else { return }
 
-        // Another statement means another set of rows, so the page and the count start again.
-        if tab.pagedStatement != statement.text { tab.resetPaging() }
+        // Another statement means other rows and other columns, so the page, the count and the
+        // sort all start again.
+        if tab.pagedStatement != statement.text {
+            tab.resetPaging()
+            tab.orderByText = ""
+        }
 
         guard SQLStatementSplitter.isPageable(statement.text) else {
             tab.pagedStatement = nil
@@ -191,10 +195,30 @@ extension AppModel {
         await runPage(of: statement, in: tab, connection: connection)
     }
 
+    /// The ORDER BY that a console puts on its wrapper.
+    ///
+    /// Only a column header writes this, so the name is quoted rather than passed through.
+    func consoleOrderBy(for tab: QueryTab) -> String {
+        guard let sort = tab.sort else { return "" }
+        return "\(SQLBuilder.quoteIdentifier(sort.column)) \(sort.sqlDirection)"
+    }
+
+    /// Sorts a console on a column and stays on the page.
+    func resortConsole(_ tab: QueryTab) async {
+        guard let connection = connections[tab.connectionID],
+              let statement = tab.pagedStatement
+        else { return }
+        await runPage(of: statement, in: tab, connection: connection)
+    }
+
     private func runPage(
         of statement: String, in tab: QueryTab, connection: ConnectionModel
     ) async {
-        let sql = SQLBuilder.page(statement, limit: tab.rowLimit + 1, offset: tab.pageOffset)
+        let sql = SQLBuilder.page(
+            statement,
+            limit: tab.rowLimit + 1,
+            offset: tab.pageOffset,
+            orderBy: consoleOrderBy(for: tab))
         guard var result = await execute(sql, in: tab, connection: connection, expectedColumns: [])
         else { return }
 

@@ -364,6 +364,29 @@ final class LiveConnectionTests: XCTestCase {
         XCTAssertFalse(row.values[5].isRaw, "jsonb reads as text, so it can be edited")
     }
 
+    /// A console sorts on the wrapper, so the order must hold across the whole result and not
+    /// only inside the page.
+    func testTheWrapperSortsTheWholeResult() async throws {
+        let bookmark = try liveBookmark()
+        let session = PostgresSession(bookmark: bookmark)
+        try await session.connect()
+        defer { Task { await session.close() } }
+
+        let statement = "SELECT generate_series(1, 10) AS n"
+
+        let firstPage = try await session.queryStrings(
+            SQLBuilder.page(statement, limit: 3, offset: 0, orderBy: "\"n\" DESC"))
+        XCTAssertEqual(firstPage.map { $0[0] }, ["10", "9", "8"], "the largest come first")
+
+        let secondPage = try await session.queryStrings(
+            SQLBuilder.page(statement, limit: 3, offset: 3, orderBy: "\"n\" DESC"))
+        XCTAssertEqual(secondPage.map { $0[0] }, ["7", "6", "5"], "the order runs across pages")
+
+        let ascending = try await session.queryStrings(
+            SQLBuilder.page(statement, limit: 3, offset: 0, orderBy: "\"n\" ASC"))
+        XCTAssertEqual(ascending.map { $0[0] }, ["1", "2", "3"])
+    }
+
     func testAWrongStatementKeepsTheConnectionOpen() async throws {
         let bookmark = try liveBookmark()
         let session = PostgresSession(bookmark: bookmark)

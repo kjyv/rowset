@@ -254,15 +254,21 @@ The widget is the only place that sets the page size. There is no separate row f
 
 ### Pages in a console
 
-A console pages as well, when the statement reads. The app wraps it:
+A console pages as well, when the statement reads. The app wraps it, and a click on a column
+header puts the order on that wrapper:
 
 ```sql
 SELECT * FROM (
 SELECT * FROM batch WHERE slug LIKE 'a%'
 ) AS _rowset_page
+ORDER BY "created_at" DESC
 LIMIT 26
 OFFSET 50
 ```
+
+The order sits on the wrapper and not inside your statement, so it holds across every page and
+your text stays as you wrote it. Editing the statement clears the sort, because the next one may
+carry other columns.
 
 A statement that writes cannot be wrapped, so an INSERT, an UPDATE, a CREATE or an EXPLAIN runs
 as it stands and shows no widget. The rule is the first word: `SELECT`, `WITH`, `TABLE` and

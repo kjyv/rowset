@@ -84,7 +84,11 @@ struct SQLTabView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ResultPane(model: model, tab: tab, result: result)
+                ResultPane(model: model, tab: tab, result: result) {
+                    // A header click wrote the sort. The wrapper carries it, so the whole result
+                    // is sorted and not the page you happen to be on.
+                    Task { await model.resortConsole(tab) }
+                }
             }
         } else {
             Text("Write a statement, then press Command-Return.")

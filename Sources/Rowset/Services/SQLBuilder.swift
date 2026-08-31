@@ -164,14 +164,24 @@ enum SQLBuilder {
 
     /// Wraps a statement so a page of its rows comes back.
     ///
+    /// The order goes on the wrapper as well, so a click on a column header sorts the whole
+    /// result and not the page you happen to be on. The columns of the statement are in scope by
+    /// their output names.
+    ///
     /// Only a statement that reads may be wrapped, see `SQLStatementSplitter.isPageable`.
-    static func page(_ statement: String, limit: Int, offset: Int) -> String {
+    static func page(
+        _ statement: String, limit: Int, offset: Int, orderBy: String = ""
+    ) -> String {
         var sql = """
             SELECT * FROM (
             \(statement)
             ) AS \(pageAlias)
-            LIMIT \(max(1, limit))
             """
+
+        let trimmedOrder = orderBy.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedOrder.isEmpty { sql += "\nORDER BY \(trimmedOrder)" }
+
+        sql += "\nLIMIT \(max(1, limit))"
         if offset > 0 { sql += "\nOFFSET \(offset)" }
         return sql
     }

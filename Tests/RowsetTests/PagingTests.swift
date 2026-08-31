@@ -179,6 +179,35 @@ final class PageableStatementTests: XCTestCase {
             """)
     }
 
+    func testTheWrapperCarriesTheOrder() {
+        XCTAssertEqual(
+            SQLBuilder.page("SELECT 1 AS a", limit: 26, offset: 0, orderBy: "\"a\" DESC"),
+            """
+            SELECT * FROM (
+            SELECT 1 AS a
+            ) AS _rowset_page
+            ORDER BY "a" DESC
+            LIMIT 26
+            """)
+    }
+
+    /// The order has to sit on the wrapper. Inside the statement it would sort the page you are
+    /// on and not the whole result.
+    func testTheOrderComesBeforeTheLimit() {
+        let sql = SQLBuilder.page("SELECT 1", limit: 10, offset: 20, orderBy: "\"a\" ASC")
+        let order = try? XCTUnwrap(sql.range(of: "ORDER BY"))
+        let limit = try? XCTUnwrap(sql.range(of: "LIMIT"))
+        XCTAssertNotNil(order)
+        XCTAssertNotNil(limit)
+        XCTAssertTrue(order!.lowerBound < limit!.lowerBound)
+        XCTAssertTrue(sql.hasSuffix("OFFSET 20"))
+    }
+
+    func testNoOrderLeavesTheWrapperPlain() {
+        let sql = SQLBuilder.page("SELECT 1", limit: 26, offset: 0, orderBy: "   ")
+        XCTAssertFalse(sql.contains("ORDER BY"))
+    }
+
     func testTheWrapperAddsAnOffsetOnlyWhenItNeedsOne() {
         let later = SQLBuilder.page("SELECT 1", limit: 26, offset: 50)
         XCTAssertTrue(later.hasSuffix("LIMIT 26\nOFFSET 50"))
@@ -196,5 +225,43 @@ final class PageableStatementTests: XCTestCase {
     func testTheWrappedStatementIsStillOne() {
         let sql = SQLBuilder.page("SELECT 'a;b'", limit: 26, offset: 0)
         XCTAssertEqual(SQLStatementSplitter.statements(in: sql).count, 1)
+    }
+}
+
+@MainActor
+final class ConsoleSortTests: XCTestCase {
+
+    private func model() -> AppModel {
+        let folder = FileManager.default.temporaryDirectory
+        let suffix = UUID().uuidString
+        return AppModel(
+            store: BookmarkStore(fileURL: folder.appending(path: "b-\(suffix).json")),
+            sessionStore: SessionStore(fileURL: folder.appending(path: "s-\(suffix).json")),
+            bufferStore: BufferStore(fileURL: folder.appending(path: "c-\(suffix).json")))
+    }
+
+    private func consoleTab() -> QueryTab {
+        QueryTab(connectionID: UUID(), connectionName: "t", kind: .sql, rowLimit: 25)
+    }
+
+    func testAHeaderSortBecomesAQuotedOrder() {
+        let model = model()
+        let tab = consoleTab()
+        tab.sortOrder = [ColumnComparator(columnName: "created_at", order: .reverse)]
+
+        XCTAssertEqual(model.consoleOrderBy(for: tab), "\"created_at\" DESC")
+    }
+
+    func testAnOddColumnNameIsStillQuoted() {
+        let model = model()
+        let tab = consoleTab()
+        tab.sortOrder = [ColumnComparator(columnName: "odd name", order: .forward)]
+
+        // A name with a space cannot be read back as one word, so no arrow and no order.
+        XCTAssertEqual(model.consoleOrderBy(for: tab), "")
+    }
+
+    func testNoSortGivesNoOrder() {
+        XCTAssertEqual(model().consoleOrderBy(for: consoleTab()), "")
     }
 }
