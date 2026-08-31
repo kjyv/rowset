@@ -40,6 +40,9 @@ struct ResultTableView: NSViewRepresentable {
         tableView.onCopy = { [weak coordinator] in
             coordinator?.copySelection(includeHeader: false)
         }
+        tableView.onDelete = { [weak coordinator] in
+            coordinator?.setSelectionToNull()
+        }
 
         tableView.style = .fullWidth
         tableView.rowHeight = Self.rowHeight
@@ -279,6 +282,7 @@ struct ResultTableView: NSViewRepresentable {
         // MARK: Editing a cell
 
         private var editor: NSTextField?
+        private var booleanButton: NSPopUpButton?
         private var editorAddress: CellAddress?
 
         private func isMultiline(at address: CellAddress) -> Bool {
@@ -295,10 +299,16 @@ struct ResultTableView: NSViewRepresentable {
             return value.isNull ? nil : value.text
         }
 
-        /// Puts a field over the cell and hands it the keyboard.
+        /// Opens an editor over the cell. A boolean gets a menu, because it has three answers at
+        /// most and typing one of them is needless work.
         private func beginEdit(row: Int, column: Int, address: CellAddress) {
             guard let tableView else { return }
             endEdit(commit: true)
+
+            if parent.editing?.info(at: address)?.kind == .boolean {
+                beginBooleanEdit(row: row, column: column, address: address)
+                return
+            }
 
             let field = NSTextField(frame: tableView.frameOfCell(atColumn: column, row: row))
             field.stringValue = currentValue(at: address) ?? ""
@@ -316,18 +326,98 @@ struct ResultTableView: NSViewRepresentable {
             editorAddress = address
         }
 
-        /// Takes the field away, and keeps what you typed when you asked for it.
-        func endEdit(commit: Bool) {
-            guard let field = editor, let address = editorAddress else { return }
-            editor = nil
+        /// A menu of true, false, and NULL where the column takes one.
+        private func beginBooleanEdit(row: Int, column: Int, address: CellAddress) {
+            guard let tableView, let tab = parent.editing else { return }
+
+            let button = NSPopUpButton(
+                frame: tableView.frameOfCell(atColumn: column, row: row), pullsDown: false)
+            button.addItems(withTitles: ["true", "false"])
+            if tab.acceptsNull(at: address) { button.addItem(withTitle: "NULL") }
+
+            let current = currentValue(at: address)
+            button.selectItem(withTitle: current.map { $0.lowercased() == "true" ? "true" : "false" }
+                ?? "NULL")
+
+            button.target = self
+            button.action = #selector(booleanChosen(_:))
+            tableView.addSubview(button)
+            booleanButton = button
+            editorAddress = address
+            button.performClick(nil)
+        }
+
+        @objc private func booleanChosen(_ sender: NSPopUpButton) {
+            guard let address = editorAddress, let tab = parent.editing else { return }
+            let title = sender.titleOfSelectedItem ?? "false"
+            tab.setEdit(title == "NULL" ? nil : title, at: address)
+            redraw(CellSelection(single: address))
+
+            sender.removeFromSuperview()
+            booleanButton = nil
             editorAddress = nil
+            tableView?.window?.makeFirstResponder(tableView)
+        }
+
+        /// Takes the editor away, and keeps what you typed when it fits the column.
+        ///
+        /// A value that does not fit stops here. The field stays open with the text in red, so a
+        /// wrong number never reaches the SQL and never disappears either.
+        @discardableResult
+        func endEdit(commit: Bool) -> Bool {
+            if let button = booleanButton {
+                button.removeFromSuperview()
+                booleanButton = nil
+                editorAddress = nil
+                return true
+            }
+
+            guard let field = editor, let address = editorAddress else { return true }
 
             if commit, let tab = parent.editing {
+                let kind = tab.info(at: address)?.kind ?? .text
+                guard ValueValidator.isValid(field.stringValue, for: kind) else {
+                    field.textColor = .systemRed
+                    field.toolTip = ValueValidator.message(for: kind)
+                    NSSound.beep()
+                    return false
+                }
                 tab.setEdit(field.stringValue, at: address)
                 redraw(CellSelection(single: address))
             }
+
+            editor = nil
+            editorAddress = nil
             field.removeFromSuperview()
             tableView?.window?.makeFirstResponder(tableView)
+            return true
+        }
+
+        /// Sets every cell of the block to NULL, where the column takes one.
+        ///
+        /// A column that takes no NULL is left alone. Deleting the text of a cell is a different
+        /// thing: that gives an empty string, which is a value.
+        func setSelectionToNull() {
+            guard let tab = parent.editing, tab.isEditable, let selection = parent.selection
+            else { return }
+
+            var changed = false
+            for rowID in selection.rows {
+                guard parent.result.row(id: rowID) != nil else { continue }
+                for columnID in selection.columns {
+                    guard parent.result.column(id: columnID) != nil else { continue }
+                    let address = CellAddress(rowID: rowID, columnID: columnID)
+                    guard tab.acceptsNull(at: address) else { continue }
+                    tab.setEdit(nil, at: address)
+                    changed = true
+                }
+            }
+
+            if changed {
+                redraw(selection)
+            } else {
+                NSSound.beep()
+            }
         }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector)
@@ -335,6 +425,9 @@ struct ResultTableView: NSViewRepresentable {
         {
             switch selector {
             case #selector(NSResponder.insertNewline(_:)):
+                endEdit(commit: true)
+                return true
+            case #selector(NSResponder.insertTab(_:)):
                 endEdit(commit: true)
                 return true
             case #selector(NSResponder.cancelOperation(_:)):
@@ -676,6 +769,7 @@ final class OverdrawTableView: NSTableView {
     var onCellMouseDown: ((_ row: Int, _ column: Int, _ extend: Bool, _ clicks: Int) -> Void)?
     var onCellDrag: ((_ row: Int, _ column: Int) -> Void)?
     var onCopy: (() -> Void)?
+    var onDelete: (() -> Void)?
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -711,6 +805,16 @@ final class OverdrawTableView: NSTableView {
     /// Command-C reaches here through the responder chain.
     @objc func copy(_ sender: Any?) {
         onCopy?()
+    }
+
+    /// The delete key sets the cells you picked to NULL, where the column allows one.
+    override func keyDown(with event: NSEvent) {
+        let deleteKeys: Set<UInt16> = [51, 117]  // delete, forward delete
+        guard deleteKeys.contains(event.keyCode), onDelete != nil else {
+            super.keyDown(with: event)
+            return
+        }
+        onDelete?()
     }
 
     override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {

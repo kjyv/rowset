@@ -131,14 +131,15 @@ final class ConnectionModel: Identifiable {
         }
     }
 
-    /// The catalog columns of one table, used to draw a header when a query returns no row.
-    func columns(schema: String, table: String) async -> [ResultColumn] {
+    /// What the catalog says about every column of one table.
+    func columnDetails(schema: String, table: String) async -> [ColumnInfo] {
         guard let rows = try? await session.queryStrings(
             CatalogQueries.columns(schema: schema, table: table))
         else { return [] }
-        return rows.enumerated().compactMap { index, row in
-            guard row.count >= 2 else { return nil }
-            return ResultColumn(id: index, name: row[0], typeName: row[1])
+        return rows.compactMap { row in
+            guard row.count >= 3 else { return nil }
+            return ColumnInfo(
+                name: row[0], typeName: row[1], isNullable: row[2].uppercased() == "YES")
         }
     }
 

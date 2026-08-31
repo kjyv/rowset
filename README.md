@@ -130,9 +130,12 @@ The bookmark file is plain JSON. You can edit it by hand and copy it to another 
 
 ## Changing a value
 
-1. Double click a cell. A short value opens a field in the cell. A value of more than one line
-   opens in the value pane, where the pencil button starts the edit.
+1. Double click a cell. A short value opens a field in the cell. A boolean opens a menu of
+   `true`, `false`, and `NULL` where the column takes one. A value of more than one line opens in
+   the value pane, where the pencil button starts the edit.
 2. Change as many cells as you want. Each one turns yellow, and a bar counts them.
+   Select cells and press **Delete** to set them to NULL. A column that takes no NULL is left
+   alone, so a block of mixed columns nulls only the ones it may.
 3. Press **Submit**. A sheet shows the exact SQL.
 4. Press **Run**, or **Cancel**. Nothing reaches the server before you press Run.
 
@@ -145,6 +148,24 @@ changes under your feet.
 
 The WHERE always holds the key values the server sent, so an edit of a key column still finds the
 row it came from.
+
+### What an editor accepts
+
+| Column type | The app checks |
+| --- | --- |
+| boolean | a menu, so only `true`, `false` or `NULL` |
+| integer | a whole number, with an optional sign |
+| numeric, real, double | a decimal number, or `NaN` |
+| uuid | a UUID |
+| json, jsonb | valid JSON |
+| date, time, timestamp, interval | nothing. Postgres reads more forms than any rule here would |
+| text and everything else | nothing |
+
+A value that does not fit stops in the editor. The text turns red, the tooltip says what is
+wanted, and nothing reaches the SQL.
+
+**An empty text is an empty string, not NULL.** Deleting every character of a cell leaves `''`.
+NULL comes from the Delete key alone, which is the only way to tell the two apart.
 
 ## Design notes
 

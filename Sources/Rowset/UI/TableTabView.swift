@@ -108,6 +108,10 @@ struct TableTabView: View {
             Text(editSummary)
                 .font(.caption)
 
+            Text("Delete sets a cell to NULL")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             Spacer()
 
             Button("Discard") { tab.discardEdits() }

@@ -26,6 +26,7 @@ struct ValueInspectorView: View {
     @State private var findRequest = FindRequest()
     @State private var draft = ""
     @State private var isEditing = false
+    @State private var validationMessage: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -34,7 +35,10 @@ struct ValueInspectorView: View {
             content
         }
         .background(.background)
-        .onChange(of: value) { _, _ in isEditing = false }
+        .onChange(of: value) { _, _ in
+            isEditing = false
+            validationMessage = nil
+        }
     }
 
     private var header: some View {
@@ -60,8 +64,15 @@ struct ValueInspectorView: View {
 
             Spacer()
 
+            if let validationMessage {
+                Label(validationMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .lineLimit(1)
+            }
+
             if isEditing {
-                Button("Cancel") { isEditing = false }
+                Button("Cancel") { isEditing = false; validationMessage = nil }
                     .font(.caption)
                 Button("Apply") { applyEdit() }
                     .font(.caption)
@@ -121,6 +132,14 @@ struct ValueInspectorView: View {
 
     private func applyEdit() {
         guard let editing else { return }
+        let kind = editing.tab.info(at: editing.address)?.kind ?? .text
+
+        guard ValueValidator.isValid(draft, for: kind) else {
+            validationMessage = ValueValidator.message(for: kind)
+            return
+        }
+
+        validationMessage = nil
         editing.tab.setEdit(draft, at: editing.address)
         isEditing = false
     }

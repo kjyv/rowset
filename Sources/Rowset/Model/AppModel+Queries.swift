@@ -8,8 +8,12 @@ extension AppModel {
               let connection = connections[tab.connectionID]
         else { return }
 
-        if tab.knownColumns.isEmpty {
-            tab.knownColumns = await connection.columns(schema: schema, table: name)
+        if tab.columnInfo.isEmpty {
+            let details = await connection.columnDetails(schema: schema, table: name)
+            tab.columnInfo = Dictionary(uniqueKeysWithValues: details.map { ($0.name, $0) })
+            tab.knownColumns = details.enumerated().map { index, info in
+                ResultColumn(id: index, name: info.name, typeName: info.typeName)
+            }
         }
         await loadPrimaryKey(for: tab)
 

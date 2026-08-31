@@ -54,6 +54,8 @@ final class QueryTab: Identifiable {
 
     /// The columns of the primary key. An empty list means this table cannot be edited.
     var primaryKey: [String] = []
+    /// What the catalog says about each column, by name.
+    var columnInfo: [String: ColumnInfo] = [:]
     /// The changes you made but have not sent. The grid marks these cells.
     var edits: [CellAddress: String?] = [:]
 
@@ -88,6 +90,17 @@ final class QueryTab: Identifiable {
 
     func discardEdits() {
         edits.removeAll()
+    }
+
+    /// What the catalog says about the column of a cell.
+    func info(at address: CellAddress) -> ColumnInfo? {
+        guard let column = result?.column(id: address.columnID) else { return nil }
+        return columnInfo[column.name]
+    }
+
+    /// True when the column of this cell takes NULL.
+    func acceptsNull(at address: CellAddress) -> Bool {
+        info(at: address)?.isNullable ?? false
     }
     var result: ResultSet?
     var errorText: String?
