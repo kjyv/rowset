@@ -27,9 +27,16 @@ struct WindowAccessor: NSViewRepresentable {
         Self.hideTitle(of: window)
     }
 
-    /// The menu bar already names the app, so the title bar repeats it for nothing.
+    /// Takes the title text away and keeps the content out of the title bar.
+    ///
+    /// The menu bar already names the app. Hiding the toolbar also turns on a full size content
+    /// view, and the tab bar then paints its background up into the title bar.
     private static func hideTitle(of window: NSWindow) {
         if window.titleVisibility != .hidden { window.titleVisibility = .hidden }
         if !window.title.isEmpty { window.title = "" }
+        if window.styleMask.contains(.fullSizeContentView) {
+            window.styleMask.remove(.fullSizeContentView)
+        }
+        if window.titlebarAppearsTransparent { window.titlebarAppearsTransparent = false }
     }
 }

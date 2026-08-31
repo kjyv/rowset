@@ -46,10 +46,8 @@ struct DetailView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if !model.tabs.isEmpty {
-                TabBarView(model: model)
-                Divider()
-            }
+            TabBarView(model: model)
+            Divider()
 
             if let tab = model.selectedTab {
                 switch tab.kind {

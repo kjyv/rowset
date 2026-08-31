@@ -5,20 +5,40 @@ struct TabBarView: View {
     @Bindable var model: AppModel
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 0) {
-                ForEach(model.tabs) { tab in
-                    TabButton(
-                        tab: tab,
-                        isSelected: tab.id == model.selectedTabID,
-                        select: { model.selectedTabID = tab.id },
-                        close: { model.closeTab(id: tab.id) })
-                    Divider().frame(height: 18)
+        HStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 0) {
+                    ForEach(model.tabs) { tab in
+                        TabButton(
+                            tab: tab,
+                            isSelected: tab.id == model.selectedTabID,
+                            select: { model.selectedTabID = tab.id },
+                            close: { model.closeTab(id: tab.id) })
+                        Divider().frame(height: 18)
+                    }
                 }
             }
+
+            newQueryButton
         }
         .frame(height: 30)
         .background(.bar)
+    }
+
+    /// The same action as Command-T. A shortcut with no button is a shortcut nobody finds.
+    private var newQueryButton: some View {
+        Button {
+            guard let connection = model.activeConnection else { return }
+            model.openSQLTab(connection: connection)
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 11, weight: .medium))
+                .frame(width: 28, height: 30)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .disabled(model.activeConnection == nil)
+        .help("New query tab (Command-T)")
     }
 }
 

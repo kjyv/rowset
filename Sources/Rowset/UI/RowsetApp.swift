@@ -33,12 +33,23 @@ struct RowsetApp: App {
                 .disabled(model.activeConnection == nil)
             }
 
-            CommandGroup(after: .toolbar) {
-                Button("Close Tab") {
-                    if let id = model.selectedTabID { model.closeTab(id: id) }
+            // `.saveItem` holds the standard Close item, and that one owns Command-W. Adding a
+            // second item with the same key let the system keep the standard one, so Command-W
+            // closed the window. Replacing the group takes the key over.
+            CommandGroup(replacing: .saveItem) {
+                Button(model.selectedTabID == nil ? "Close Window" : "Close Tab") {
+                    if let id = model.selectedTabID {
+                        model.closeTab(id: id)
+                    } else {
+                        NSApp.keyWindow?.performClose(nil)
+                    }
                 }
                 .keyboardShortcut("w", modifiers: .command)
-                .disabled(model.selectedTabID == nil)
+
+                Button("Close Window") {
+                    NSApp.keyWindow?.performClose(nil)
+                }
+                .keyboardShortcut("w", modifiers: [.command, .shift])
             }
         }
     }
