@@ -152,3 +152,61 @@ final class TabEditTests: XCTestCase {
         XCTAssertFalse(tab.hasEdits)
     }
 }
+
+@MainActor
+final class NullCellEditTests: XCTestCase {
+
+    private func tab() -> QueryTab {
+        let tab = QueryTab(
+            connectionID: UUID(), connectionName: "t",
+            kind: .table(schema: "public", name: "batch"), rowLimit: 25)
+        tab.primaryKey = ["id"]
+        tab.columnInfo = [
+            "note": ColumnInfo(name: "note", typeName: "text", isNullable: true),
+        ]
+
+        var result = ResultSet()
+        result.columns = [ResultColumn(id: 0, name: "note", typeName: "text")]
+        result.rows = [
+            ResultRow(id: 0, values: [.null]),
+            ResultRow(id: 1, values: [DisplayValue.make(text: "text")]),
+        ]
+        tab.result = result
+        return tab
+    }
+
+    /// A NULL cell opens an empty field. Leaving it empty changed nothing, so no edit may be
+    /// written, or every look at a NULL cell would turn it into an empty text.
+    func testAnEmptyFieldOverANullCellIsNoChange() {
+        let tab = tab()
+        let address = CellAddress(rowID: 0, columnID: 0)
+        XCTAssertTrue(tab.result?.value(at: address)?.isNull ?? false)
+
+        // What the editor does when it holds an empty text over a NULL cell.
+        let wasNull = tab.result?.value(at: address)?.isNull ?? false
+        if !(wasNull && "".isEmpty) { tab.setEdit("", at: address) }
+
+        XCTAssertFalse(tab.hasEdits, "an untouched NULL stays NULL")
+    }
+
+    /// The same empty text over a cell that held something is a real change.
+    func testAnEmptyFieldOverATextIsAChange() {
+        let tab = tab()
+        let address = CellAddress(rowID: 1, columnID: 0)
+
+        let wasNull = tab.result?.value(at: address)?.isNull ?? false
+        if !(wasNull && "".isEmpty) { tab.setEdit("", at: address) }
+
+        XCTAssertTrue(tab.hasEdits)
+        XCTAssertEqual(tab.pendingText(at: address), "")
+    }
+
+    /// The value pane is the way to put an empty text where a NULL was.
+    func testThePaneCanStillWriteAnEmptyText() {
+        let tab = tab()
+        let address = CellAddress(rowID: 0, columnID: 0)
+        tab.setEdit("", at: address)
+        XCTAssertTrue(tab.hasEdits)
+        XCTAssertEqual(tab.pendingText(at: address), "")
+    }
+}

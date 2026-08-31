@@ -370,6 +370,16 @@ struct ResultTableView: NSViewRepresentable {
         /// wrong number never reaches the SQL and never disappears either.
         @discardableResult
         func endEdit(commit: Bool) -> Bool {
+            endEdit(commit: commit, keepOpenOnBadValue: true)
+        }
+
+        /// Takes the editor away, and keeps what you typed when it fits the column.
+        ///
+        /// While you are still typing, a value that does not fit holds the field open with the
+        /// text in red. Once the field has lost the keyboard there is nothing to hold open, so a
+        /// bad value is dropped and the cell keeps what it had.
+        @discardableResult
+        func endEdit(commit: Bool, keepOpenOnBadValue: Bool) -> Bool {
             if let button = booleanButton {
                 button.removeFromSuperview()
                 booleanButton = nil
@@ -381,14 +391,23 @@ struct ResultTableView: NSViewRepresentable {
 
             if commit, let tab = parent.editing {
                 let kind = tab.info(at: address)?.kind ?? .text
-                guard ValueValidator.isValid(field.stringValue, for: kind) else {
+
+                if ValueValidator.isValid(field.stringValue, for: kind) {
+                    // A cell that held NULL and was left empty was not changed. Only the delete
+                    // key writes NULL, and the value pane writes an empty text.
+                    let wasNull = parent.result.value(at: address)?.isNull ?? false
+                    if !(wasNull && field.stringValue.isEmpty) {
+                        tab.setEdit(field.stringValue, at: address)
+                    }
+                    redraw(CellSelection(single: address))
+                } else if keepOpenOnBadValue {
                     field.textColor = .systemRed
                     field.toolTip = ValueValidator.message(for: kind)
                     NSSound.beep()
                     return false
+                } else {
+                    NSSound.beep()
                 }
-                tab.setEdit(field.stringValue, at: address)
-                redraw(CellSelection(single: address))
             }
 
             editor = nil
@@ -431,6 +450,15 @@ struct ResultTableView: NSViewRepresentable {
             } else {
                 NSSound.beep()
             }
+        }
+
+        /// The field lost the keyboard, so the edit ends here.
+        ///
+        /// Without this a click somewhere else left the field sitting over the cell, empty and
+        /// doing nothing, until Escape took it away.
+        func controlTextDidEndEditing(_ notification: Notification) {
+            guard editor != nil else { return }
+            endEdit(commit: true, keepOpenOnBadValue: false)
         }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector)

@@ -333,6 +333,10 @@ wanted, and nothing reaches the SQL.
 **An empty text is an empty string, not NULL.** Deleting every character of a cell leaves `''`.
 NULL comes from the Delete key alone, which is the only way to tell the two apart.
 
+A cell that already held NULL is the one exception. It opens an empty field, and leaving that
+field empty changes nothing, or every look at a NULL cell would turn it into an empty text. To
+put an empty text where a NULL was, use the value pane.
+
 ## Design notes
 
 **One connection per bookmark.** Rowset uses `PostgresConnection` and not `PostgresClient`. A
