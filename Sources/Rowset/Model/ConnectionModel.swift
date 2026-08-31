@@ -19,6 +19,8 @@ final class ConnectionModel: Identifiable {
     let bookmark: Bookmark
 
     var state: State = .disconnected
+    /// True when the sidebar shows the tree of this connection.
+    var isExpanded = false
     var schemas: [TreeNode] = []
     /// Set when the AWS login expired. The view turns this into a sheet.
     var expiredLogin: AWSAuthError?
@@ -129,6 +131,54 @@ final class ConnectionModel: Identifiable {
         return rows.enumerated().compactMap { index, row in
             guard row.count >= 2 else { return nil }
             return ResultColumn(id: index, name: row[0], typeName: row[1])
+        }
+    }
+
+    // MARK: - Remembering the open rows
+
+    /// The tree rows that are open now.
+    var expandedPaths: [NodePath] {
+        var paths: [NodePath] = []
+        for schema in schemas where schema.isExpanded {
+            guard case .schema(let schemaName) = schema.kind else { continue }
+            paths.append(NodePath(schema: schemaName, table: nil))
+            for child in schema.children ?? [] where child.isExpanded {
+                switch child.kind {
+                case .table(_, let name), .view(_, let name):
+                    paths.append(NodePath(schema: schemaName, table: name))
+                default:
+                    break
+                }
+            }
+        }
+        return paths
+    }
+
+    /// Opens the rows that were open the last time, and loads what they need.
+    func restoreExpansion(_ paths: [NodePath]) async {
+        guard !paths.isEmpty else { return }
+
+        for schemaNode in schemas {
+            guard case .schema(let schemaName) = schemaNode.kind,
+                  paths.contains(where: { $0.schema == schemaName })
+            else { continue }
+
+            schemaNode.isExpanded = true
+            await loadChildren(of: schemaNode)
+
+            let wantedTables = Set(paths.filter { $0.schema == schemaName }.compactMap(\.table))
+            guard !wantedTables.isEmpty else { continue }
+
+            for tableNode in schemaNode.children ?? [] {
+                switch tableNode.kind {
+                case .table(_, let name), .view(_, let name):
+                    guard wantedTables.contains(name) else { continue }
+                    tableNode.isExpanded = true
+                    await loadChildren(of: tableNode)
+                default:
+                    break
+                }
+            }
         }
     }
 

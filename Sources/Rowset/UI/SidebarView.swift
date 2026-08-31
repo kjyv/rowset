@@ -18,8 +18,11 @@ struct SidebarView: View {
             Divider()
             toolbar
         }
-        .task { model.syncConnections() }
-        .onChange(of: model.store.bookmarks) { _, _ in model.syncConnections() }
+        .task { await model.restoreSession() }
+        .onChange(of: model.store.bookmarks) { _, _ in
+            model.syncConnections()
+            model.saveSession()
+        }
     }
 
     private var toolbar: some View {
@@ -72,17 +75,23 @@ struct BookmarkSection: View {
     let model: AppModel
     let bookmark: Bookmark
 
-    @State private var isExpanded = false
-
     private var connection: ConnectionModel? { model.connection(id: bookmark.id) }
 
+    /// The open state lives on the connection, so the session file can hold it.
+    private var isExpanded: Binding<Bool> {
+        Binding(
+            get: { model.connection(id: bookmark.id)?.isExpanded ?? false },
+            set: { model.connection(id: bookmark.id)?.isExpanded = $0 })
+    }
+
     var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
+        DisclosureGroup(isExpanded: isExpanded) {
             content
         } label: {
             label.tag(SidebarSelection.bookmark(bookmark.id))
         }
-        .onChange(of: isExpanded) { _, expanded in
+        .onChange(of: isExpanded.wrappedValue) { _, expanded in
+            model.saveSession()
             guard expanded, let connection, connection.state == .disconnected else { return }
             Task { await model.connect(to: bookmark.id) }
         }
@@ -192,6 +201,7 @@ struct TreeNodeRow: View {
                 taggedRowLabel
             }
             .onChange(of: node.isExpanded) { _, expanded in
+                model.saveSession()
                 guard expanded else { return }
                 Task { await connection.loadChildren(of: node) }
             }

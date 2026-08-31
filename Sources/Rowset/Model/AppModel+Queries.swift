@@ -53,6 +53,8 @@ extension AppModel {
         } catch {
             tab.errorText = DatabaseErrorText.describe(error)
         }
+
+        saveSession()
     }
 
     /// Applies a new sort and runs the query again.

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 @main
@@ -8,6 +9,12 @@ struct RowsetApp: App {
         WindowGroup {
             ContentView(model: model)
                 .background(WindowAccessor(autosaveName: "RowsetMainWindow"))
+                .onReceive(
+                    NotificationCenter.default.publisher(
+                        for: NSApplication.willTerminateNotification)
+                ) { _ in
+                    model.saveSessionNow()
+                }
         }
         .defaultSize(width: 1280, height: 820)
         .commands {

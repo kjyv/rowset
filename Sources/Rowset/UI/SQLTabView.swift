@@ -43,7 +43,7 @@ struct SQLTabView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                InspectorToggle(tab: tab)
+                InspectorToggle(model: model)
 
                 Spacer()
                 Text(tab.connectionName)
@@ -77,7 +77,7 @@ struct SQLTabView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ResultPane(tab: tab, result: result)
+                ResultPane(model: model, tab: tab, result: result)
             }
         } else {
             Text("Write a statement, then press Command-Return.")

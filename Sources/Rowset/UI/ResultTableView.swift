@@ -436,9 +436,14 @@ enum Clipboard {
 final class OverdrawTableView: NSTableView {
     /// How far above and below the window AppKit prepares, in points.
     /// At a row height of 20 this is about 100 rows on each side.
-    static let overdraw: CGFloat = 2_000
+    static let verticalOverdraw: CGFloat = 2_000
+
+    /// How far left and right AppKit prepares, in points.
+    /// At a column width of 170 this is about 9 columns on each side.
+    static let horizontalOverdraw: CGFloat = 1_600
 
     override func prepareContent(in rect: NSRect) {
-        super.prepareContent(in: rect.insetBy(dx: 0, dy: -Self.overdraw))
+        super.prepareContent(
+            in: rect.insetBy(dx: -Self.horizontalOverdraw, dy: -Self.verticalOverdraw))
     }
 }

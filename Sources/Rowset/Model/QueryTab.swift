@@ -46,7 +46,6 @@ final class QueryTab: Identifiable {
     var selectedCell: CellAddress?
     /// A column to scroll to. The grid clears it once it jumped there.
     var revealColumn: String?
-    var isInspectorVisible = true
     var result: ResultSet?
     var errorText: String?
     var isRunning = false
@@ -88,6 +87,24 @@ final class QueryTab: Identifiable {
     var selectedColumn: ResultColumn? {
         guard let selectedCell, let result else { return nil }
         return result.column(id: selectedCell.columnID)
+    }
+
+    /// What to write into the session file.
+    var state: TabState {
+        var schema: String?
+        var table: String?
+        if case .table(let s, let name) = kind {
+            schema = s
+            table = name
+        }
+        return TabState(
+            bookmarkID: connectionID,
+            schema: schema,
+            table: table,
+            filterText: filterText,
+            orderByText: orderByText,
+            sqlText: sqlText,
+            rowLimit: rowLimit)
     }
 
     var title: String {

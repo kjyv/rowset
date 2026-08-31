@@ -10,6 +10,7 @@ struct ContentView: View {
         } detail: {
             DetailView(model: model)
         }
+        .modifier(HiddenToolbarTitle())
         .sheet(item: $model.editedBookmark) { bookmark in
             BookmarkEditor(bookmark: bookmark) { saved in
                 model.store.upsert(saved)
@@ -21,6 +22,17 @@ struct ContentView: View {
             SSOLoginSheet(prompt: prompt) {
                 model.ssoPrompt = nil
             }
+        }
+    }
+}
+
+/// Takes the title out of the toolbar where the system offers a switch for it.
+struct HiddenToolbarTitle: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 15.0, *) {
+            content.toolbar(removing: .title)
+        } else {
+            content
         }
     }
 }

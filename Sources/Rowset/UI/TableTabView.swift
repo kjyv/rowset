@@ -86,7 +86,7 @@ struct TableTabView: View {
                 .frame(width: 60)
                 .onSubmit { applyLimit() }
 
-            InspectorToggle(tab: tab)
+            InspectorToggle(model: model)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -113,7 +113,7 @@ struct TableTabView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ResultPane(tab: tab, result: result)
+                ResultPane(model: model, tab: tab, result: result)
             }
         } else {
             ProgressView()

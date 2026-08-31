@@ -15,11 +15,21 @@ struct WindowAccessor: NSViewRepresentable {
             // Restore first. Setting the autosave name writes the current frame at once.
             window.setFrameUsingName(autosaveName)
             window.setFrameAutosaveName(autosaveName)
-            // The menu bar already names the app, so the title bar repeats it for nothing.
-            window.titleVisibility = .hidden
+            Self.hideTitle(of: window)
         }
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_ nsView: NSView, context: Context) {
+        // SwiftUI writes the window title on its own passes, so one call at the start is not
+        // enough. Every update asks again.
+        guard let window = nsView.window else { return }
+        Self.hideTitle(of: window)
+    }
+
+    /// The menu bar already names the app, so the title bar repeats it for nothing.
+    private static func hideTitle(of window: NSWindow) {
+        if window.titleVisibility != .hidden { window.titleVisibility = .hidden }
+        if !window.title.isEmpty { window.title = "" }
+    }
 }

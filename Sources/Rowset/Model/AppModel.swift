@@ -31,10 +31,11 @@ enum SidebarSelection: Hashable {
 @Observable
 final class AppModel {
     let store = BookmarkStore()
+    private let sessionStore = SessionStore()
 
     var connections: [UUID: ConnectionModel] = [:]
     var tabs: [QueryTab] = []
-    var selectedTabID: QueryTab.ID?
+    var selectedTabID: QueryTab.ID? { didSet { saveSession() } }
     var sidebarSelection: SidebarSelection?
 
     /// The connection row itself. The buttons that edit or delete need this one, so a selected
@@ -54,6 +55,10 @@ final class AppModel {
     var editedBookmark: Bookmark?
     var ssoPrompt: SSOPrompt?
 
+    /// The value pane belongs to the window, so every tab shows it the same way.
+    var isInspectorVisible = true { didSet { saveSession() } }
+    var inspectorHeight: Double = 190 { didSet { saveSession() } }
+
     private let rowLimitKey = "defaultRowLimit"
 
     var defaultRowLimit: Int {
@@ -62,6 +67,90 @@ final class AppModel {
             return stored > 0 ? stored : 50
         }
         set { UserDefaults.standard.set(max(1, newValue), forKey: rowLimitKey) }
+    }
+
+    // MARK: - Session
+
+    /// Reads the last session and puts the window back the way you left it.
+    func restoreSession() async {
+        let state = sessionStore.load()
+        isInspectorVisible = state.inspectorVisible
+        inspectorHeight = state.inspectorHeight
+        syncConnections()
+
+        let known = Set(store.bookmarks.map(\.id))
+        let expanded = state.expandedBookmarks.filter { known.contains($0) }
+
+        // Rebuild the tabs first, so a connection finds its work waiting.
+        for tabState in state.tabs where known.contains(tabState.bookmarkID) {
+            guard let connection = connections[tabState.bookmarkID] else { continue }
+            let tab: QueryTab
+            if let schema = tabState.schema, let table = tabState.table {
+                tab = QueryTab(
+                    connectionID: connection.id,
+                    connectionName: connection.bookmark.displayName,
+                    kind: .table(schema: schema, name: table),
+                    rowLimit: tabState.rowLimit)
+                tab.filterText = tabState.filterText
+                tab.orderByText = tabState.orderByText
+            } else {
+                tab = QueryTab(
+                    connectionID: connection.id,
+                    connectionName: connection.bookmark.displayName,
+                    kind: .sql,
+                    rowLimit: tabState.rowLimit)
+                tab.sqlText = tabState.sqlText
+            }
+            tabs.append(tab)
+        }
+        if let index = state.selectedTabIndex, tabs.indices.contains(index) {
+            selectedTabID = tabs[index].id
+        } else {
+            selectedTabID = tabs.first?.id
+        }
+
+        // Open the connections that were open, and the tree rows under them.
+        let needed = Set(expanded).union(tabs.map(\.connectionID))
+        for bookmarkID in needed {
+            guard let connection = connections[bookmarkID] else { continue }
+            connection.isExpanded = expanded.contains(bookmarkID)
+            await connect(to: bookmarkID)
+            await connection.restoreExpansion(state.nodes(for: bookmarkID))
+        }
+
+        isRestored = true
+        saveSession()
+    }
+
+    /// Blocks a write while the restore is still building the state.
+    private var isRestored = false
+
+    func currentSessionState() -> SessionState {
+        var nodes: [String: [NodePath]] = [:]
+        var expanded: [UUID] = []
+        for (id, connection) in connections {
+            if connection.isExpanded { expanded.append(id) }
+            let paths = connection.expandedPaths
+            if !paths.isEmpty { nodes[id.uuidString] = paths }
+        }
+
+        return SessionState(
+            expandedBookmarks: expanded.sorted { $0.uuidString < $1.uuidString },
+            expandedNodes: nodes,
+            tabs: tabs.map(\.state),
+            selectedTabIndex: tabs.firstIndex { $0.id == selectedTabID },
+            inspectorVisible: isInspectorVisible,
+            inspectorHeight: inspectorHeight)
+    }
+
+    func saveSession() {
+        guard isRestored else { return }
+        sessionStore.save(currentSessionState())
+    }
+
+    func saveSessionNow() {
+        guard isRestored else { return }
+        sessionStore.saveNow(currentSessionState())
     }
 
     // MARK: - Connections
@@ -123,6 +212,7 @@ final class AppModel {
             rowLimit: defaultRowLimit)
         tabs.append(tab)
         selectedTabID = tab.id
+        saveSession()
         return tab
     }
 
@@ -136,6 +226,7 @@ final class AppModel {
         tab.sqlText = "SELECT 1;"
         tabs.append(tab)
         selectedTabID = tab.id
+        saveSession()
         return tab
     }
 
@@ -145,6 +236,7 @@ final class AppModel {
         if selectedTabID == id {
             selectedTabID = tabs.indices.contains(index) ? tabs[index].id : tabs.last?.id
         }
+        saveSession()
     }
 
     var selectedTab: QueryTab? {
