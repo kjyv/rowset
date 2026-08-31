@@ -11,6 +11,9 @@ connection, look at the tables, and read the first rows with a filter and a sort
 - Gets the connection password from `aws rds generate-db-auth-token` at every connect.
 - Shows schemas, tables, views, and columns in a tree on the left.
 - Opens a table in a tab. Each tab has a `WHERE` field, a row limit, and sortable columns.
+- Shows the whole value of the cell you click in a pane under the grid. It formats JSON and
+  keeps the key order that the server sent.
+- Copies a value, a column name, or a whole row from the right click menu of a cell.
 - Runs a free-form statement in a query tab.
 - Remembers the window size and position.
 
@@ -99,6 +102,18 @@ a pooled connection that opens later would carry a dead token.
 
 **Sorting happens on the server.** A click on a column header changes the `ORDER BY` and runs the
 query again. A sort inside the app would only order the rows that are already loaded.
+
+**The grid draws a preview, not the value.** A cell can hold a large JSON document. `Text`
+measures every string it receives, so a grid of documents stalls while it scrolls. The renderer
+builds a short single-line preview once. The grid draws that, and the value pane holds the rest.
+A cell also carries no tooltip, because a tooltip adds a tracking area per cell.
+
+**The tab owns its view state.** The sort order, the row limit text, and the selected cell live
+on `QueryTab` and not in `@State`. A tab switch then reuses the views instead of building the
+whole grid again.
+
+**The value pane uses `NSTextView`.** SwiftUI lays out a whole string at once, which stalls on a
+large document. `NSTextView` lays out only the part it draws.
 
 **The app is not sandboxed.** It reads `~/.aws/config` and runs the `aws` binary.
 

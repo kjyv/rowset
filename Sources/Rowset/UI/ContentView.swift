@@ -38,12 +38,12 @@ struct DetailView: View {
 
             if let tab = model.selectedTab {
                 switch tab.kind {
+                // No `.id(tab.id)` here. The tab object owns the view state, so SwiftUI reuses
+                // the view instead of building the whole grid again on every tab switch.
                 case .table:
                     TableTabView(model: model, tab: tab)
-                        .id(tab.id)
                 case .sql:
                     SQLTabView(model: model, tab: tab)
-                        .id(tab.id)
                 }
             } else {
                 EmptyDetailView(model: model)

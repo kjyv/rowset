@@ -1,5 +1,20 @@
 import Foundation
 
+/// Tells the table which column the user clicked. The server does the sorting, so `compare`
+/// never reorders anything here.
+struct ColumnComparator: SortComparator, Hashable, Sendable {
+    var columnName: String
+    var order: SortOrder = .forward
+
+    func compare(_ lhs: ResultRow, _ rhs: ResultRow) -> ComparisonResult {
+        .orderedSame
+    }
+
+    var sortSpec: SortSpec {
+        SortSpec(column: columnName, ascending: order == .forward)
+    }
+}
+
 /// Which column the result sorts on.
 struct SortSpec: Hashable, Sendable {
     var column: String

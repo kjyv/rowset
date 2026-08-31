@@ -25,6 +25,8 @@ final class QueryTab: Identifiable {
     /// Table tab state.
     var filterText = ""
     var sort: SortSpec?
+    /// What the table header shows. It mirrors `sort`.
+    var sortOrder: [ColumnComparator] = []
     var rowLimit: Int
     /// The columns from the catalog. They fill the header when a query returns no row.
     var knownColumns: [ResultColumn] = []
@@ -33,6 +35,9 @@ final class QueryTab: Identifiable {
     var sqlText = ""
 
     /// Shared state.
+    var rowLimitText: String
+    var selectedCell: CellAddress?
+    var isInspectorVisible = true
     var result: ResultSet?
     var errorText: String?
     var isRunning = false
@@ -43,6 +48,18 @@ final class QueryTab: Identifiable {
         self.kind = kind
         self.connectionName = connectionName
         self.rowLimit = rowLimit
+        self.rowLimitText = String(rowLimit)
+    }
+
+    /// The value the inspector shows.
+    var selectedValue: DisplayValue? {
+        guard let selectedCell, let result else { return nil }
+        return result.value(at: selectedCell)
+    }
+
+    var selectedColumn: ResultColumn? {
+        guard let selectedCell, let result else { return nil }
+        return result.column(id: selectedCell.columnID)
     }
 
     var title: String {

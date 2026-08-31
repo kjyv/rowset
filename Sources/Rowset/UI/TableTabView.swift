@@ -5,9 +5,6 @@ struct TableTabView: View {
     let model: AppModel
     @Bindable var tab: QueryTab
 
-    @State private var sortOrder: [ColumnComparator] = []
-    @State private var limitText = ""
-
     var body: some View {
         VStack(spacing: 0) {
             filterBar
@@ -16,13 +13,13 @@ struct TableTabView: View {
             Divider()
             statusBar
         }
-        .task {
-            limitText = String(tab.rowLimit)
+        // The identity is the tab, so the query runs again when the view moves to another tab.
+        .task(id: tab.id) {
             if tab.result == nil, tab.errorText == nil {
                 await model.runTableQuery(tab)
             }
         }
-        .onChange(of: sortOrder) { _, newValue in
+        .onChange(of: tab.sortOrder) { _, newValue in
             let spec = newValue.first?.sortSpec
             guard spec != tab.sort else { return }
             Task { await model.applySort(spec, to: tab) }
@@ -41,8 +38,7 @@ struct TableTabView: View {
             .help("Run the query again")
             .disabled(tab.isRunning)
 
-            Label("WHERE", systemImage: "line.3.horizontal.decrease.circle")
-                .labelStyle(.titleAndIcon)
+            Text("WHERE")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
@@ -51,19 +47,19 @@ struct TableTabView: View {
                 .font(.system(size: 12, design: .monospaced))
                 .onSubmit { Task { await model.runTableQuery(tab) } }
 
-            Label("ORDER BY", systemImage: "arrow.up.arrow.down")
-                .labelStyle(.titleAndIcon)
+            Text("ORDER BY")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
             Text(orderByText)
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundStyle(tab.sort == nil ? .secondary : .primary)
-                .frame(minWidth: 120, alignment: .leading)
+                .frame(minWidth: 110, alignment: .leading)
+                .lineLimit(1)
 
             if tab.sort != nil {
                 Button {
-                    sortOrder = []
+                    tab.sortOrder = []
                     Task { await model.applySort(nil, to: tab) }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
@@ -77,10 +73,12 @@ struct TableTabView: View {
             Text("Rows")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            TextField("", text: $limitText)
+            TextField("", text: $tab.rowLimitText)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 60)
                 .onSubmit { applyLimit() }
+
+            InspectorToggle(tab: tab)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -92,8 +90,8 @@ struct TableTabView: View {
     }
 
     private func applyLimit() {
-        guard let value = Int(limitText), value > 0 else {
-            limitText = String(tab.rowLimit)
+        guard let value = Int(tab.rowLimitText), value > 0 else {
+            tab.rowLimitText = String(tab.rowLimit)
             return
         }
         tab.rowLimit = value
@@ -112,7 +110,7 @@ struct TableTabView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ResultTableView(result: result, sortOrder: $sortOrder)
+                ResultPane(tab: tab, result: result)
             }
         } else {
             ProgressView()

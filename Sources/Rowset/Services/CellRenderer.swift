@@ -29,19 +29,23 @@ enum CellRenderer {
 
     static func render(_ cell: PostgresCell) -> DisplayValue {
         guard let bytes = cell.bytes else { return .null }
+        let isJSON = jsonTypes.contains(cell.dataType)
 
         if cell.format == .text {
             var buffer = bytes
             let text = buffer.readString(length: buffer.readableBytes) ?? ""
-            return DisplayValue(text: text)
+            return DisplayValue.make(text: text, isJSON: isJSON)
         }
 
         if let text = renderBinary(cell) {
-            return DisplayValue(text: text)
+            return DisplayValue.make(text: text, isJSON: isJSON)
         }
 
-        return DisplayValue(text: hexDump(bytes), isRaw: true)
+        return DisplayValue.make(text: hexDump(bytes), isRaw: true)
     }
+
+    /// The column types that hold JSON. The inspector formats these.
+    static let jsonTypes: Set<PostgresDataType> = [.json, .jsonb]
 
     // MARK: - Binary types
 

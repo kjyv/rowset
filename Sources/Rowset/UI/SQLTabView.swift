@@ -5,9 +5,6 @@ struct SQLTabView: View {
     let model: AppModel
     @Bindable var tab: QueryTab
 
-    @State private var sortOrder: [ColumnComparator] = []
-    @State private var limitText = ""
-
     var body: some View {
         VSplitView {
             editor
@@ -20,31 +17,33 @@ struct SQLTabView: View {
             }
             .frame(minHeight: 160)
         }
-        .task { limitText = String(tab.rowLimit) }
     }
 
     private var editor: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Button {
-                    run()
+                    Task { await model.runSQLTab(tab) }
                 } label: {
                     Label("Run", systemImage: "play.fill")
                 }
                 .keyboardShortcut(.return, modifiers: .command)
-                .disabled(tab.isRunning || tab.sqlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(tab.isRunning
+                          || tab.sqlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .help("Run the statement (Command-Return)")
 
                 Text("Read at most")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                TextField("", text: $limitText)
+                TextField("", text: $tab.rowLimitText)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 60)
                     .onSubmit { applyLimit() }
                 Text("rows")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                InspectorToggle(tab: tab)
 
                 Spacer()
                 Text(tab.connectionName)
@@ -78,7 +77,7 @@ struct SQLTabView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ResultTableView(result: result, sortOrder: $sortOrder)
+                ResultPane(tab: tab, result: result)
             }
         } else {
             Text("Write a statement, then press Command-Return.")
@@ -103,13 +102,9 @@ struct SQLTabView: View {
         .background(.bar)
     }
 
-    private func run() {
-        Task { await model.runSQLTab(tab) }
-    }
-
     private func applyLimit() {
-        guard let value = Int(limitText), value > 0 else {
-            limitText = String(tab.rowLimit)
+        guard let value = Int(tab.rowLimitText), value > 0 else {
+            tab.rowLimitText = String(tab.rowLimit)
             return
         }
         tab.rowLimit = value
