@@ -28,13 +28,12 @@ struct RowInspectorSheet: View {
             footer
         }
         .frame(width: 620, height: 520)
-        // A hidden button, because onKeyPress asks for focus and a sheet gives none by itself.
-        // A shortcut needs no focus at all.
-        .background {
-            Button("", action: onClose)
-                .keyboardShortcut(.space, modifiers: [])
-                .opacity(0)
-        }
+        // The keys come from the window and not from a shortcut. A click on a value hands the
+        // keyboard to the text of it, and a text view swallows a space and an arrow first.
+        .background(RowInspectorKeys(
+            onSpace: onClose,
+            onUp: { step(-1) },
+            onDown: { step(1) }))
     }
 
     private var header: some View {
