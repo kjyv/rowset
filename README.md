@@ -41,15 +41,25 @@ missing, and generates the Xcode project. To generate the project alone, run `xc
 
 ## The app icon
 
-The icon is a drawing in code, not a file somebody exported. `Scripts/make-icon.swift` renders
-every size into the asset catalog:
+The icon is a drawing in code, not a file somebody exported:
 
 ```sh
-swift Scripts/make-icon.swift
+./Scripts/make-icon.sh
 ```
 
-Change a color or a proportion in that file, run it again, and build. The PNG files are committed,
-so a normal build needs no extra step.
+`Scripts/make-icon.swift` draws every size, and `iconutil` builds
+`Sources/Rowset/Resources/AppIcon.icns` out of them. Change a color or a proportion, run the
+script again, and build. The icns is committed, so a normal build needs no extra step.
+
+The asset catalog is not used for this. Its compiler kept only four sizes and stopped at 256
+points, so `iconutil` builds the file instead. It writes all ten, up to 1024 points.
+
+macOS caches an app icon per bundle path, so a fresh icon may not appear at once. To force it:
+
+```sh
+/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/\
+LaunchServices.framework/Versions/A/Support/lsregister -f <path to Rowset.app>
+```
 
 ## Add a connection
 

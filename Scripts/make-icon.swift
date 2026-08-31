@@ -1,6 +1,6 @@
-// Draws the app icon and writes every size the asset catalog asks for.
+// Draws the app icon and writes every size of an iconset.
 //
-// Run it with:  swift Scripts/make-icon.swift
+// Run Scripts/make-icon.sh, which calls this and then builds the icns.
 //
 // The icon is code and not a binary blob, so a colour or a proportion can be changed and the
 // whole set redrawn.
@@ -115,8 +115,11 @@ let outputs: [(String, Int)] = [
     ("icon_512x512", 512), ("icon_512x512@2x", 1024),
 ]
 
-let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-let folder = root.appending(path: "Sources/Rowset/Resources/Assets.xcassets/AppIcon.appiconset")
+guard CommandLine.arguments.count > 1 else {
+    FileHandle.standardError.write(Data("usage: make-icon.swift <output folder>\n".utf8))
+    exit(1)
+}
+let folder = URL(fileURLWithPath: CommandLine.arguments[1])
 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
 
 for (name, size) in outputs {

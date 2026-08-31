@@ -35,6 +35,7 @@ targets:
       path: Sources/Rowset/Info.plist
       properties:
         CFBundleName: Rowset
+        CFBundleIconFile: AppIcon
         CFBundleDisplayName: Rowset
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
@@ -46,7 +47,6 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: tech.alcemy.Rowset
-        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # No sandbox: the app reads ~/.aws/config and runs the aws binary.
         ENABLE_APP_SANDBOX: NO
         ENABLE_HARDENED_RUNTIME: NO
@@ -64,8 +64,7 @@ targets:
       - target: Rowset
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: tech.alcemy.Rowset
-        ASSETCATALOG_COMPILER_APPICON_NAME: AppIconTests
+        PRODUCT_BUNDLE_IDENTIFIER: tech.alcemy.RowsetTests
         GENERATE_INFOPLIST_FILE: YES
 
 schemes:
