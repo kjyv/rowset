@@ -1,6 +1,19 @@
 import Foundation
 import Observation
 
+/// The statements of an edit, held until you accept them.
+///
+/// Nothing reaches the server before you have read this.
+struct PendingWrite: Identifiable {
+    let id = UUID()
+    var tabID: UUID
+    var statements: [String]
+    var rowCount: Int
+    var cellCount: Int
+
+    var sql: String { statements.joined(separator: ";\n\n") + ";" }
+}
+
 /// A prompt to renew an expired AWS login.
 struct SSOPrompt: Identifiable {
     let id = UUID()
@@ -68,6 +81,8 @@ final class AppModel {
     /// The bookmark that the editor sheet edits. `nil` closes the sheet.
     var editedBookmark: Bookmark?
     var ssoPrompt: SSOPrompt?
+    /// The statements waiting for your word. `nil` closes the sheet.
+    var pendingWrite: PendingWrite?
 
     /// Whether the sidebar shows. Without this there is no way back once it closes, because the
     /// window carries no toolbar and so no toggle of its own.

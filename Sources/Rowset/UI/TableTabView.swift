@@ -9,6 +9,10 @@ struct TableTabView: View {
         VStack(spacing: 0) {
             filterBar
             Divider()
+            if tab.hasEdits {
+                editBar
+                Divider()
+            }
             content
             Divider()
             statusBar
@@ -96,6 +100,33 @@ struct TableTabView: View {
         Task { await model.runTableQuery(tab) }
     }
 
+    /// The bar that appears once you change a cell.
+    private var editBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "pencil")
+                .foregroundStyle(.orange)
+            Text(editSummary)
+                .font(.caption)
+
+            Spacer()
+
+            Button("Discard") { tab.discardEdits() }
+                .disabled(tab.isRunning)
+            Button("Submit…") { model.prepareWrite(for: tab) }
+                .keyboardShortcut("s", modifiers: [.command])
+                .disabled(tab.isRunning)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Color.yellow.opacity(0.12))
+    }
+
+    private var editSummary: String {
+        let count = tab.edits.count
+        let cells = count == 1 ? "1 cell" : "\(count) cells"
+        return "\(cells) changed and not sent"
+    }
+
     // MARK: - Content
 
     @ViewBuilder
@@ -108,7 +139,7 @@ struct TableTabView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ResultPane(model: model, tab: tab, result: result) {
+                ResultPane(model: model, tab: tab, result: result, editable: tab.isEditable) {
                     // A header click already wrote the new ORDER BY. Fetch the rows again.
                     Task { await model.runTableQuery(tab) }
                 }

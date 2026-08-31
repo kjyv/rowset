@@ -11,6 +11,7 @@ extension AppModel {
         if tab.knownColumns.isEmpty {
             tab.knownColumns = await connection.columns(schema: schema, table: name)
         }
+        await loadPrimaryKey(for: tab)
 
         let sql = SQLBuilder.selectRows(
             schema: schema,

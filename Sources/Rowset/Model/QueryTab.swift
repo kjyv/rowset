@@ -49,6 +49,46 @@ final class QueryTab: Identifiable {
     var selectedCell: CellAddress? { selection?.focus }
     /// A column to scroll to. The grid clears it once it jumped there.
     var revealColumn: String?
+
+    // MARK: - Editing
+
+    /// The columns of the primary key. An empty list means this table cannot be edited.
+    var primaryKey: [String] = []
+    /// The changes you made but have not sent. The grid marks these cells.
+    var edits: [CellAddress: String?] = [:]
+
+    /// True when a row can be found again by its key, which an UPDATE needs.
+    var isEditable: Bool {
+        if case .table = kind { return !primaryKey.isEmpty }
+        return false
+    }
+
+    var hasEdits: Bool { !edits.isEmpty }
+
+    /// The text a cell shows now: the edit if you made one, else what the server sent.
+    func pendingText(at address: CellAddress) -> String? {
+        edits[address] ?? nil
+    }
+
+    func isEdited(_ address: CellAddress) -> Bool {
+        edits.index(forKey: address) != nil
+    }
+
+    func setEdit(_ value: String?, at address: CellAddress) {
+        guard let original = result?.value(at: address) else { return }
+        let originalText: String? = original.isNull ? nil : original.text
+
+        // An edit back to the original value is no edit at all.
+        if value == originalText {
+            edits.removeValue(forKey: address)
+        } else {
+            edits[address] = value
+        }
+    }
+
+    func discardEdits() {
+        edits.removeAll()
+    }
     var result: ResultSet?
     var errorText: String?
     var isRunning = false

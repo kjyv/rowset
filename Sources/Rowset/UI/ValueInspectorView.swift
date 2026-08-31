@@ -19,9 +19,13 @@ struct ValueInspectorView: View {
     let column: ResultColumn?
     let value: DisplayValue?
     let onClose: () -> Void
+    /// The tab and the cell to write back to. `nil` means the pane only reads.
+    var editing: (tab: QueryTab, address: CellAddress)?
 
     @State private var formatJSON = true
     @State private var findRequest = FindRequest()
+    @State private var draft = ""
+    @State private var isEditing = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -30,6 +34,7 @@ struct ValueInspectorView: View {
             content
         }
         .background(.background)
+        .onChange(of: value) { _, _ in isEditing = false }
     }
 
     private var header: some View {
@@ -54,6 +59,23 @@ struct ValueInspectorView: View {
             }
 
             Spacer()
+
+            if isEditing {
+                Button("Cancel") { isEditing = false }
+                    .font(.caption)
+                Button("Apply") { applyEdit() }
+                    .font(.caption)
+                    .keyboardShortcut(.return, modifiers: .command)
+            } else if editing != nil, value != nil {
+                Button {
+                    draft = value?.isNull == true ? "" : (value?.text ?? "")
+                    isEditing = true
+                } label: {
+                    Image(systemName: "pencil")
+                }
+                .buttonStyle(.borderless)
+                .help("Change this value")
+            }
 
             if isJSON {
                 Toggle("Format", isOn: $formatJSON)
@@ -97,9 +119,17 @@ struct ValueInspectorView: View {
         return JSONPrettyPrinter.looksLikeJSON(text)
     }
 
+    private func applyEdit() {
+        guard let editing else { return }
+        editing.tab.setEdit(draft, at: editing.address)
+        isEditing = false
+    }
+
     @ViewBuilder
     private var content: some View {
-        if let value {
+        if isEditing {
+            EditableValueView(text: $draft)
+        } else if let value {
             if value.isNull {
                 Text("NULL")
                     .italic()
@@ -180,6 +210,58 @@ private struct ValueTextView: NSViewRepresentable {
             let item = NSMenuItem()
             item.tag = NSTextFinder.Action.showFindInterface.rawValue
             textView.performTextFinderAction(item)
+        }
+    }
+}
+
+
+/// A text area you can type in. The value pane uses it for a value of more than one line, which
+/// does not fit a cell of the grid.
+private struct EditableValueView: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSTextView.scrollableTextView()
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+
+        guard let textView = scrollView.documentView as? NSTextView else { return scrollView }
+        textView.isEditable = true
+        textView.isSelectable = true
+        textView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        textView.textContainerInset = NSSize(width: 6, height: 6)
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isGrammarCheckingEnabled = false
+        textView.isContinuousSpellCheckingEnabled = false
+        textView.delegate = context.coordinator
+        textView.string = text
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        context.coordinator.text = $text
+        guard let textView = scrollView.documentView as? NSTextView,
+              textView.string != text, !context.coordinator.isTyping
+        else { return }
+        textView.string = text
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var text: Binding<String>
+        var isTyping = false
+
+        init(text: Binding<String>) {
+            self.text = text
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            isTyping = true
+            text.wrappedValue = textView.string
+            isTyping = false
         }
     }
 }

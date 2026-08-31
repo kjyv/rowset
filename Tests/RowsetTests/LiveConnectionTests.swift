@@ -153,6 +153,88 @@ final class LiveConnectionTests: XCTestCase {
         XCTAssertEqual(result.rows.first?.values.first?.text, "1")
     }
 
+    /// Builds a table of its own, changes it, and drops it again. It touches nothing else.
+    func testATransactionWritesEveryStatementOrNone() async throws {
+        let bookmark = try liveBookmark()
+        let session = PostgresSession(bookmark: bookmark)
+        try await session.connect()
+
+        let table = "rowset_edit_test_\(UUID().uuidString.prefix(8).lowercased())"
+        let qualified = SQLBuilder.qualifiedName(schema: "public", table: table)
+
+        _ = try await session.query(
+            "CREATE TABLE \(qualified) (id integer PRIMARY KEY, note text)", maxRows: 1)
+        defer {
+            Task {
+                _ = try? await session.query("DROP TABLE IF EXISTS \(qualified)", maxRows: 1)
+                await session.close()
+            }
+        }
+        _ = try await session.query(
+            "INSERT INTO \(qualified) VALUES (1, 'one'), (2, 'two')", maxRows: 1)
+
+        // Two rows change together.
+        try await session.runTransaction([
+            SQLBuilder.update(
+                schema: "public", table: table,
+                set: [SQLBuilder.Assignment(column: "note", value: "changed")],
+                key: [SQLBuilder.Assignment(column: "id", value: "1")]),
+            SQLBuilder.update(
+                schema: "public", table: table,
+                set: [SQLBuilder.Assignment(column: "note", value: nil)],
+                key: [SQLBuilder.Assignment(column: "id", value: "2")]),
+        ])
+
+        let after = try await session.queryStrings(
+            "SELECT id, note FROM \(qualified) ORDER BY id")
+        XCTAssertEqual(after, [["1", "changed"], ["2", ""]], "one changed, one set to NULL")
+
+        // A key that matches no row must leave everything as it was.
+        do {
+            try await session.runTransaction([
+                SQLBuilder.update(
+                    schema: "public", table: table,
+                    set: [SQLBuilder.Assignment(column: "note", value: "first")],
+                    key: [SQLBuilder.Assignment(column: "id", value: "1")]),
+                SQLBuilder.update(
+                    schema: "public", table: table,
+                    set: [SQLBuilder.Assignment(column: "note", value: "ghost")],
+                    key: [SQLBuilder.Assignment(column: "id", value: "999")]),
+            ])
+            XCTFail("a statement that matched no row should have stopped the batch")
+        } catch {
+            let message = DatabaseErrorText.describe(error)
+            XCTAssertTrue(message.contains("0 rows"), "unexpected message: \(message)")
+        }
+
+        let rolledBack = try await session.queryStrings(
+            "SELECT id, note FROM \(qualified) ORDER BY id")
+        XCTAssertEqual(rolledBack, [["1", "changed"], ["2", ""]], "the batch rolled back whole")
+    }
+
+    /// The primary key query must name the columns an UPDATE can key on.
+    func testThePrimaryKeyOfARealTable() async throws {
+        let bookmark = try liveBookmark()
+        let session = PostgresSession(bookmark: bookmark)
+        try await session.connect()
+
+        let table = "rowset_key_test_\(UUID().uuidString.prefix(8).lowercased())"
+        let qualified = SQLBuilder.qualifiedName(schema: "public", table: table)
+        _ = try await session.query(
+            "CREATE TABLE \(qualified) (a integer, b text, v text, PRIMARY KEY (a, b))",
+            maxRows: 1)
+        defer {
+            Task {
+                _ = try? await session.query("DROP TABLE IF EXISTS \(qualified)", maxRows: 1)
+                await session.close()
+            }
+        }
+
+        let key = try await session.queryStrings(
+            CatalogQueries.primaryKey(schema: "public", table: table))
+        XCTAssertEqual(key.map { $0[0] }, ["a", "b"], "both columns, in key order")
+    }
+
     func testAWrongStatementKeepsTheConnectionOpen() async throws {
         let bookmark = try liveBookmark()
         let session = PostgresSession(bookmark: bookmark)

@@ -231,4 +231,9 @@ final class ConnectionModel: Identifiable {
     func run(_ sql: String, limit: Int, expectedColumns: [ResultColumn] = []) async throws -> ResultSet {
         try await session.query(sql, maxRows: limit, expectedColumns: expectedColumns)
     }
+
+    /// Runs statements in one transaction.
+    func runTransaction(_ statements: [String]) async throws {
+        try await session.runTransaction(statements)
+    }
 }

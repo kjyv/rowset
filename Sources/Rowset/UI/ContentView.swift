@@ -26,6 +26,12 @@ struct ContentView: View {
                 model.selectedBookmarkID = saved.id
             }
         }
+        .sheet(item: $model.pendingWrite) { write in
+            SQLPreviewSheet(
+                write: write,
+                onCancel: { model.pendingWrite = nil },
+                onRun: { Task { await model.commitWrite(write) } })
+        }
         .sheet(item: $model.ssoPrompt) { prompt in
             SSOLoginSheet(prompt: prompt) {
                 model.ssoPrompt = nil

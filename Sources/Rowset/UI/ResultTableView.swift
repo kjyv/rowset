@@ -18,6 +18,8 @@ struct ResultTableView: NSViewRepresentable {
     /// Runs when you click a column header. The server does the sorting, so the caller must run
     /// the query again.
     var onSortChange: () -> Void = {}
+    /// The tab that owns the edits. `nil` means the grid is read only.
+    var editing: QueryTab?
 
     static let rowHeight: CGFloat = 20
 
@@ -83,7 +85,9 @@ struct ResultTableView: NSViewRepresentable {
     // MARK: - Coordinator
 
     @MainActor
-    final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
+    final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate,
+        NSTextFieldDelegate
+    {
         private var parent: ResultTableView
         weak var tableView: NSTableView?
         weak var cellMenu: NSMenu?
@@ -204,7 +208,7 @@ struct ResultTableView: NSViewRepresentable {
         }
 
         /// What the row at `row` must draw. The row view asks for this while it draws.
-        func rowContent(_ row: Int) -> (values: [DisplayValue], selected: ClosedRange<Int>?)? {
+        func rowContent(_ row: Int) -> RowContent? {
             guard parent.result.rows.indices.contains(row) else { return nil }
             let resultRow = parent.result.rows[row]
 
@@ -213,8 +217,24 @@ struct ResultTableView: NSViewRepresentable {
                 selected = selection.columns
             }
 
-            let values = parent.result.columns.indices.map { resultRow.value(at: $0) }
-            return (values, selected)
+            var values = parent.result.columns.indices.map { resultRow.value(at: $0) }
+            var edited: Set<Int> = []
+
+            // A pending edit replaces what the server sent, and the cell is marked.
+            if let tab = parent.editing, tab.hasEdits {
+                for (index, column) in parent.result.columns.enumerated() {
+                    let address = CellAddress(rowID: resultRow.id, columnID: column.id)
+                    guard tab.isEdited(address) else { continue }
+                    edited.insert(index)
+                    if let text = tab.pendingText(at: address) {
+                        values[index] = DisplayValue.make(text: text)
+                    } else {
+                        values[index] = .null
+                    }
+                }
+            }
+
+            return RowContent(values: values, selected: selected, edited: edited)
         }
 
         // MARK: Clicks
@@ -228,7 +248,14 @@ struct ResultTableView: NSViewRepresentable {
                 parent.selection = CellSelection(single: address)
             }
 
-            if clickCount >= 2 { parent.onOpenValue() }
+            guard clickCount >= 2 else { return }
+
+            // A value of more than one line does not fit a cell. The pane takes it.
+            if let tab = parent.editing, tab.isEditable, !isMultiline(at: address) {
+                beginEdit(row: row, column: column, address: address)
+            } else {
+                parent.onOpenValue()
+            }
         }
 
         /// Grows the block while you drag. The anchor stays where the drag began.
@@ -247,6 +274,75 @@ struct ResultTableView: NSViewRepresentable {
             return CellAddress(
                 rowID: parent.result.rows[row].id,
                 columnID: parent.result.columns[column].id)
+        }
+
+        // MARK: Editing a cell
+
+        private var editor: NSTextField?
+        private var editorAddress: CellAddress?
+
+        private func isMultiline(at address: CellAddress) -> Bool {
+            guard let value = currentValue(at: address) else { return false }
+            return value.contains("\n") || value.count > 200
+        }
+
+        /// What a cell holds now, the pending edit first.
+        private func currentValue(at address: CellAddress) -> String? {
+            if let tab = parent.editing, tab.isEdited(address) {
+                return tab.pendingText(at: address)
+            }
+            guard let value = parent.result.value(at: address) else { return nil }
+            return value.isNull ? nil : value.text
+        }
+
+        /// Puts a field over the cell and hands it the keyboard.
+        private func beginEdit(row: Int, column: Int, address: CellAddress) {
+            guard let tableView else { return }
+            endEdit(commit: true)
+
+            let field = NSTextField(frame: tableView.frameOfCell(atColumn: column, row: row))
+            field.stringValue = currentValue(at: address) ?? ""
+            field.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+            field.isBezeled = true
+            field.bezelStyle = .squareBezel
+            field.drawsBackground = true
+            field.delegate = self
+            field.lineBreakMode = .byClipping
+            field.usesSingleLineMode = true
+
+            tableView.addSubview(field)
+            tableView.window?.makeFirstResponder(field)
+            editor = field
+            editorAddress = address
+        }
+
+        /// Takes the field away, and keeps what you typed when you asked for it.
+        func endEdit(commit: Bool) {
+            guard let field = editor, let address = editorAddress else { return }
+            editor = nil
+            editorAddress = nil
+
+            if commit, let tab = parent.editing {
+                tab.setEdit(field.stringValue, at: address)
+                redraw(CellSelection(single: address))
+            }
+            field.removeFromSuperview()
+            tableView?.window?.makeFirstResponder(tableView)
+        }
+
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector)
+            -> Bool
+        {
+            switch selector {
+            case #selector(NSResponder.insertNewline(_:)):
+                endEdit(commit: true)
+                return true
+            case #selector(NSResponder.cancelOperation(_:)):
+                endEdit(commit: false)
+                return true
+            default:
+                return false
+            }
         }
 
         /// Puts the block on the clipboard in every table format.
@@ -387,6 +483,14 @@ private final class BlockBox {
     func run() { action() }
 }
 
+/// What one row must draw.
+struct RowContent {
+    var values: [DisplayValue]
+    var selected: ClosedRange<Int>?
+    /// The cells that hold a change you have not sent.
+    var edited: Set<Int>
+}
+
 /// One row of the grid. It draws every cell of the row itself.
 ///
 /// A view per cell was the reason the grid stuttered. The table built thousands of `NSView`
@@ -459,6 +563,11 @@ final class GridRowView: NSTableRowView {
         for column in columns {
             guard content.values.indices.contains(column) else { continue }
             let frame = tableView.rect(ofColumn: column)
+
+            if content.edited.contains(column) {
+                context.setFillColor(NSColor.systemYellow.withAlphaComponent(0.30).cgColor)
+                context.fill(CGRect(x: frame.minX, y: 0, width: frame.width, height: bounds.height))
+            }
 
             if content.selected?.contains(column) == true {
                 context.setFillColor(

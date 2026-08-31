@@ -8,6 +8,7 @@ enum SessionError: LocalizedError {
     case notConnected
     case certificateBundleMissing
     case passwordMissing(String)
+    case wrongRowCount(statement: Int, count: Int)
 
     var errorDescription: String? {
         switch self {
@@ -18,6 +19,9 @@ enum SessionError: LocalizedError {
                 + "Run Scripts/fetch-rds-ca.sh and build again."
         case .passwordMissing(let name):
             "No password is saved for \(name). Open the connection and type it again."
+        case .wrongRowCount(let statement, let count):
+            "Statement \(statement) matched \(count) rows instead of one. "
+                + "Nothing was changed. Refresh the table and try again."
         }
     }
 }
@@ -189,6 +193,33 @@ actor PostgresSession {
         let elapsed = DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds
         result.duration = Double(elapsed) / 1_000_000_000
         return result
+    }
+
+    /// Runs statements in one transaction. Either every one takes effect or none does.
+    ///
+    /// Each statement ends with `RETURNING 1`, so a count of the returned rows says whether it
+    /// hit the row it aimed at. Anything but one row rolls the whole batch back, which is what
+    /// stops a broken key from changing the wrong rows.
+    func runTransaction(_ statements: [String]) async throws {
+        guard !statements.isEmpty else { return }
+        guard let connection, !connection.isClosed else { throw SessionError.notConnected }
+
+        _ = try await connection.query(PostgresQuery(unsafeSQL: "BEGIN"), logger: logger)
+
+        do {
+            for (index, sql) in statements.enumerated() {
+                let result = try await runQuery(sql, maxRows: 2, expectedColumns: [])
+                guard result.rows.count == 1 else {
+                    throw SessionError.wrongRowCount(
+                        statement: index + 1, count: result.rows.count)
+                }
+            }
+        } catch {
+            _ = try? await connection.query(PostgresQuery(unsafeSQL: "ROLLBACK"), logger: logger)
+            throw error
+        }
+
+        _ = try await connection.query(PostgresQuery(unsafeSQL: "COMMIT"), logger: logger)
     }
 
     /// Runs a statement and returns the rows as plain strings. The catalog queries use this.

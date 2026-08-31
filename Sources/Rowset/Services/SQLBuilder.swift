@@ -67,6 +67,49 @@ enum SQLBuilder {
         "\(quoteIdentifier(schema)).\(quoteIdentifier(table))"
     }
 
+    /// One column and the value it takes. `nil` means NULL.
+    struct Assignment: Hashable, Sendable {
+        var column: String
+        var value: String?
+    }
+
+    /// Writes an UPDATE for one row.
+    ///
+    /// The WHERE holds the primary key of that row, read from the values the server sent, so an
+    /// edit of a key column still finds the row it came from. `RETURNING 1` lets the caller check
+    /// that exactly one row changed.
+    static func update(
+        schema: String,
+        table: String,
+        set changes: [Assignment],
+        key: [Assignment]
+    ) -> String {
+        let sets = changes
+            .map { "\(quoteIdentifier($0.column)) = \(literal($0.value))" }
+            .joined(separator: ", ")
+
+        let conditions = key
+            .map { assignment -> String in
+                guard let value = assignment.value else {
+                    return "\(quoteIdentifier(assignment.column)) IS NULL"
+                }
+                return "\(quoteIdentifier(assignment.column)) = \(quoteLiteral(value))"
+            }
+            .joined(separator: " AND ")
+
+        return """
+            UPDATE \(qualifiedName(schema: schema, table: table))
+            SET \(sets)
+            WHERE \(conditions)
+            RETURNING 1
+            """
+    }
+
+    /// A value as SQL. A missing value is NULL and not the text "NULL".
+    static func literal(_ value: String?) -> String {
+        value.map(quoteLiteral) ?? "NULL"
+    }
+
     /// Builds `SELECT * FROM "s"."t" [WHERE ...] [ORDER BY ...] LIMIT n`.
     ///
     /// The filter text and the order text go in unchanged. A database client must let you write

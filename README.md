@@ -15,6 +15,7 @@ connection, look at the tables, and read the first rows with a filter and a sort
 - Shows the whole value of the cell you click in a pane under the grid. It formats JSON and
   keeps the key order that the server sent.
 - Copies a value, a column name, or a whole row from the right click menu of a cell.
+- Changes a value and sends the edits together, after it shows you the SQL.
 - Runs a free-form statement in a query tab.
 - Remembers the window size and position.
 
@@ -126,6 +127,24 @@ To update the certificate bundle, run `./Scripts/fetch-rds-ca.sh`.
 | Window frame and row limit | `UserDefaults` for `tech.alcemy.Rowset` |
 
 The bookmark file is plain JSON. You can edit it by hand and copy it to another machine.
+
+## Changing a value
+
+1. Double click a cell. A short value opens a field in the cell. A value of more than one line
+   opens in the value pane, where the pencil button starts the edit.
+2. Change as many cells as you want. Each one turns yellow, and a bar counts them.
+3. Press **Submit**. A sheet shows the exact SQL.
+4. Press **Run**, or **Cancel**. Nothing reaches the server before you press Run.
+
+Every statement runs in one transaction and ends with `RETURNING 1`. If any statement matches
+anything but one row, the whole batch rolls back and the table stays as it was.
+
+**A table without a primary key cannot be edited.** An UPDATE needs a WHERE that finds exactly one
+row, and without a key there is none. Rowset does not fall back to `ctid`, because that value
+changes under your feet.
+
+The WHERE always holds the key values the server sent, so an edit of a key column still finds the
+row it came from.
 
 ## Design notes
 

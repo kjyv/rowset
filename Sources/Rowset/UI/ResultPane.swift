@@ -8,6 +8,8 @@ struct ResultPane: View {
     let model: AppModel
     @Bindable var tab: QueryTab
     let result: ResultSet
+    /// True when a cell of this result may be changed.
+    var editable = false
     /// Runs when a column header changes the sort.
     var onSortChange: () -> Void = {}
 
@@ -58,6 +60,12 @@ struct ResultPane: View {
                 .onEnded { _ in dragStartHeight = nil })
     }
 
+    /// The cell the pane may change. A table without a primary key stays read only.
+    private var inspectorTarget: (tab: QueryTab, address: CellAddress)? {
+        guard editable, let address = tab.selectedCell else { return nil }
+        return (tab, address)
+    }
+
     private var grid: some View {
         ResultTableView(
             result: result,
@@ -65,7 +73,8 @@ struct ResultPane: View {
             selection: $tab.selection,
             revealColumn: $tab.revealColumn,
             onOpenValue: { model.isInspectorVisible = true },
-            onSortChange: onSortChange)
+            onSortChange: onSortChange,
+            editing: editable ? tab : nil)
     }
 }
 
