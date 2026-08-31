@@ -1,0 +1,80 @@
+name: Rowset
+
+options:
+  bundleIdPrefix: tech.alcemy
+  deploymentTarget:
+    macOS: "14.4"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEAD_CODE_STRIPPING: YES
+
+packages:
+  PostgresNIO:
+    url: https://github.com/vapor/postgres-nio.git
+    from: 1.21.0
+
+targets:
+  Rowset:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/Rowset
+        excludes:
+          - "Info.plist"
+    dependencies:
+      - package: PostgresNIO
+        product: PostgresNIO
+    info:
+      path: Sources/Rowset/Info.plist
+      properties:
+        CFBundleName: Rowset
+        CFBundleDisplayName: Rowset
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
+        LSApplicationCategoryType: public.app-category.developer-tools
+        NSHumanReadableCopyright: ""
+        NSSupportsAutomaticTermination: true
+        NSSupportsSuddenTermination: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: tech.alcemy.Rowset
+        # No sandbox: the app reads ~/.aws/config and runs the aws binary.
+        ENABLE_APP_SANDBOX: NO
+        ENABLE_HARDENED_RUNTIME: NO
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Automatic
+        COMBINE_HIDPI_IMAGES: YES
+        ENABLE_PREVIEWS: YES
+
+  RowsetTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests/RowsetTests
+    dependencies:
+      - target: Rowset
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: tech.alcemy.RowsetTests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  Rowset:
+    build:
+      targets:
+        Rowset: all
+        RowsetTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - RowsetTests
