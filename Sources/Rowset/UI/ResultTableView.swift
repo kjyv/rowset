@@ -513,7 +513,6 @@ struct ResultTableView: NSViewRepresentable {
 
                 add(menu, "Sort Ascending") { self.sort(by: name, ascending: true) }
                 add(menu, "Sort Descending") { self.sort(by: name, ascending: false) }
-                add(menu, "Order of the Database") { self.clearSort() }
                 menu.addItem(.separator())
 
                 add(menu, "Copy Column Name “\(name)”") { Clipboard.write(name) }
@@ -555,12 +554,6 @@ struct ResultTableView: NSViewRepresentable {
             parent.sortOrder = [
                 ColumnComparator(columnName: column, order: ascending ? .forward : .reverse)
             ]
-            parent.onSortChange()
-        }
-
-        /// Drops the sort, so the rows come back in the order the database gives them.
-        private func clearSort() {
-            parent.sortOrder = []
             parent.onSortChange()
         }
 

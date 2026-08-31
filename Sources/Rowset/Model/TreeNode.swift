@@ -70,6 +70,11 @@ final class TreeNode: Identifiable {
     var isExpanded = false
     var isLoading = false
     var loadError: String?
+    /// True when the columns under this table stand in the order of their names.
+    ///
+    /// The database gives them in the order they were declared, which is right for reading a
+    /// table and wrong for finding one column among sixty.
+    var sortsColumnsByName = false
 
     init(kind: TreeNodeKind) {
         self.kind = kind

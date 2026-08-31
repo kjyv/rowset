@@ -108,7 +108,9 @@ final class ConnectionModel: Identifiable {
                 }
 
             case .table(let schema, let name), .view(let schema, let name):
-                node.children = try await columnNodes(schema: schema, table: name)
+                node.children = Self.ordered(
+                    try await columnNodes(schema: schema, table: name),
+                    byName: node.sortsColumnsByName)
 
             case .column:
                 node.children = []
@@ -116,6 +118,21 @@ final class ConnectionModel: Identifiable {
         } catch {
             node.loadError = DatabaseErrorText.describe(error)
         }
+    }
+
+    /// Puts the columns in the order the table asks for.
+    static func ordered(_ columns: [TreeNode], byName: Bool) -> [TreeNode] {
+        guard byName else { return columns }
+        return columns.sorted {
+            $0.kind.title.localizedStandardCompare($1.kind.title) == .orderedAscending
+        }
+    }
+
+    /// Changes the order of the columns of one table, without asking the server again.
+    func setColumnSorting(byName: Bool, on node: TreeNode) {
+        node.sortsColumnsByName = byName
+        guard let columns = node.children else { return }
+        node.children = Self.ordered(columns, byName: byName)
     }
 
     private func columnNodes(schema: String, table: String) async throws -> [TreeNode] {

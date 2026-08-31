@@ -2,8 +2,8 @@
 
 A small macOS database browser for AWS RDS Postgres with IAM authentication.
 
-Rowset replaces the part of a JetBrains IDE that most people use every day: pick a saved
-connection, look at the tables, and read the first rows with a filter and a sort.
+Rowset offers what most people use every day: pick a saved
+connection, look at the tables, and read some rows with a filter and a sort.
 
 ## What it does
 

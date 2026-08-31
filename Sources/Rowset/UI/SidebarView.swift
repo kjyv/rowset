@@ -345,7 +345,20 @@ struct TreeNodeRow: View {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(node.kind.title, forType: .string)
             }
+            if node.kind.isTableLike {
+                Divider()
+                Button(node.sortsColumnsByName
+                       ? "Sort Columns by Position"
+                       : "Sort Columns by Name") {
+                    connection.setColumnSorting(byName: !node.sortsColumnsByName, on: node)
+                    node.isExpanded = true
+                    if node.children == nil {
+                        Task { await connection.loadChildren(of: node) }
+                    }
+                }
+            }
             if node.kind.canHaveChildren {
+                Divider()
                 Button("Refresh") {
                     node.children = nil
                     Task { await connection.loadChildren(of: node) }
