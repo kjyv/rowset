@@ -16,7 +16,7 @@ extension AppModel {
             schema: schema,
             table: name,
             filter: tab.filterText,
-            sort: tab.sort,
+            orderBy: tab.orderByText,
             limit: tab.rowLimit)
 
         await run(sql, in: tab, connection: connection, expectedColumns: tab.knownColumns)
@@ -57,7 +57,7 @@ extension AppModel {
 
     /// Applies a new sort and runs the query again.
     func applySort(_ sort: SortSpec?, to tab: QueryTab) async {
-        tab.sort = sort
+        tab.orderByText = sort?.text ?? ""
         await runTableQuery(tab)
     }
 }

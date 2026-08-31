@@ -21,6 +21,34 @@ struct SortSpec: Hashable, Sendable {
     var ascending: Bool = true
 
     var sqlDirection: String { ascending ? "ASC" : "DESC" }
+
+    /// The ORDER BY text for this sort.
+    var text: String { "\(column) \(sqlDirection)" }
+
+    /// Reads an ORDER BY text that names one column.
+    ///
+    /// The header arrow needs a single column and a direction. A text such as
+    /// `created_at DESC, id` names more than that, so the parser returns `nil` and the header
+    /// shows no arrow. The text still goes into the query.
+    static func parse(_ text: String) -> SortSpec? {
+        let parts = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(whereSeparator: { $0 == " " || $0 == "\t" })
+        guard (1...2).contains(parts.count) else { return nil }
+
+        let name = parts[0].trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+        // Only a plain name can carry the header arrow. An expression such as `lower(slug)`
+        // matches no column, so the arrow would point at nothing.
+        guard !name.isEmpty, name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" })
+        else { return nil }
+
+        guard parts.count == 2 else { return SortSpec(column: name, ascending: true) }
+        switch parts[1].uppercased() {
+        case "ASC": return SortSpec(column: name, ascending: true)
+        case "DESC": return SortSpec(column: name, ascending: false)
+        default: return nil
+        }
+    }
 }
 
 /// Builds the SQL that the table tab runs.
@@ -41,12 +69,13 @@ enum SQLBuilder {
 
     /// Builds `SELECT * FROM "s"."t" [WHERE ...] [ORDER BY ...] LIMIT n`.
     ///
-    /// The filter text goes in unchanged. A database client must let you write SQL.
+    /// The filter text and the order text go in unchanged. A database client must let you write
+    /// SQL, so you can type `lower(slug) LIKE 'a%'` or `created_at DESC, id`.
     static func selectRows(
         schema: String,
         table: String,
         filter: String,
-        sort: SortSpec?,
+        orderBy: String,
         limit: Int
     ) -> String {
         var sql = "SELECT * FROM \(qualifiedName(schema: schema, table: table))"
@@ -56,8 +85,9 @@ enum SQLBuilder {
             sql += "\nWHERE \(trimmedFilter)"
         }
 
-        if let sort {
-            sql += "\nORDER BY \(quoteIdentifier(sort.column)) \(sort.sqlDirection)"
+        let trimmedOrder = orderBy.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedOrder.isEmpty {
+            sql += "\nORDER BY \(trimmedOrder)"
         }
 
         sql += "\nLIMIT \(max(1, limit))"

@@ -85,7 +85,7 @@ final class LiveConnectionTests: XCTestCase {
             schema: schema,
             table: table,
             filter: "",
-            sort: SortSpec(column: sortColumn, ascending: false),
+            orderBy: SortSpec(column: sortColumn, ascending: false).text,
             limit: 5)
 
         let result = try await session.query(sql, maxRows: 5)
@@ -94,6 +94,45 @@ final class LiveConnectionTests: XCTestCase {
         for row in result.rows {
             XCTAssertEqual(row.values.count, result.columns.count)
         }
+    }
+
+    /// Proves that the WHERE text of the filter field reaches the server.
+    func testTheFilterReachesTheServer() async throws {
+        let bookmark = try liveBookmark()
+        let session = PostgresSession(bookmark: bookmark)
+        try await session.connect()
+        defer { Task { await session.close() } }
+
+        let tables = try await session.queryStrings(CatalogQueries.tables(schema: schema))
+        guard let table = tables.first?.first else { throw XCTSkip("no table") }
+
+        func rowCount(filter: String) async throws -> Int {
+            let sql = SQLBuilder.selectRows(
+                schema: schema, table: table, filter: filter, orderBy: "", limit: 5)
+            return try await session.query(sql, maxRows: 5).rows.count
+        }
+
+        let noRows = try await rowCount(filter: "1 = 0")
+        XCTAssertEqual(noRows, 0, "the filter did not reach the server")
+
+        let someRows = try await rowCount(filter: "1 = 1")
+        XCTAssertGreaterThan(someRows, 0, "table \(table) is empty")
+    }
+
+    /// `= NULL` is never true in SQL. Only `IS NULL` matches a missing value.
+    func testEqualsNullMatchesNoRow() async throws {
+        let bookmark = try liveBookmark()
+        let session = PostgresSession(bookmark: bookmark)
+        try await session.connect()
+        defer { Task { await session.close() } }
+
+        let equals = try await session.query(
+            "SELECT * FROM (VALUES (1), (NULL)) AS t(v) WHERE v = NULL", maxRows: 10)
+        XCTAssertEqual(equals.rows.count, 0, "= NULL never matches")
+
+        let isNull = try await session.query(
+            "SELECT * FROM (VALUES (1), (NULL)) AS t(v) WHERE v IS NULL", maxRows: 10)
+        XCTAssertEqual(isNull.rows.count, 1, "IS NULL matches the missing value")
     }
 
     func testAWrongStatementKeepsTheConnectionOpen() async throws {

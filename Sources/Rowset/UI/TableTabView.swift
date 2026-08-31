@@ -41,26 +41,33 @@ struct TableTabView: View {
             Text("WHERE")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
+                .fixedSize()
 
-            TextField("", text: $tab.filterText, prompt: Text("article_identifier = '1004.1'"))
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 12, design: .monospaced))
-                .onSubmit { Task { await model.runTableQuery(tab) } }
+            CompletingTextField(
+                text: $tab.filterText,
+                placeholder: tab.filterPlaceholder,
+                completions: tab.completionNames,
+                keywords: SQLKeywords.filter,
+                onSubmit: { Task { await model.runTableQuery(tab) } })
+                .frame(minWidth: 160)
 
             Text("ORDER BY")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
+                .fixedSize()
 
-            Text(orderByText)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(tab.sort == nil ? .secondary : .primary)
-                .frame(minWidth: 110, alignment: .leading)
-                .lineLimit(1)
+            CompletingTextField(
+                text: $tab.orderByText,
+                placeholder: tab.orderByPlaceholder,
+                completions: tab.completionNames,
+                keywords: SQLKeywords.orderBy,
+                onSubmit: { Task { await model.runTableQuery(tab) } })
+                .frame(minWidth: 120, maxWidth: 240)
 
-            if tab.sort != nil {
+            if !tab.orderByText.isEmpty {
                 Button {
-                    tab.sortOrder = []
-                    Task { await model.applySort(nil, to: tab) }
+                    tab.orderByText = ""
+                    Task { await model.runTableQuery(tab) }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                 }
@@ -73,6 +80,7 @@ struct TableTabView: View {
             Text("Rows")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .fixedSize()
             TextField("", text: $tab.rowLimitText)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 60)
@@ -82,11 +90,6 @@ struct TableTabView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-    }
-
-    private var orderByText: String {
-        guard let sort = tab.sort else { return "none" }
-        return "\(sort.column) \(sort.sqlDirection)"
     }
 
     private func applyLimit() {

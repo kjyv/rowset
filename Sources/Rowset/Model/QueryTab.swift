@@ -24,9 +24,16 @@ final class QueryTab: Identifiable {
 
     /// Table tab state.
     var filterText = ""
-    var sort: SortSpec?
+    /// What goes after ORDER BY. You may type any SQL here.
+    var orderByText = ""
+    /// The single column that the header arrow marks. It is `nil` when `orderByText` names more
+    /// than one column or holds an expression.
+    var sort: SortSpec? { SortSpec.parse(orderByText) }
     /// What the table header shows. It mirrors `sort`.
-    var sortOrder: [ColumnComparator] = []
+    var sortOrder: [ColumnComparator] {
+        get { sort.map { [ColumnComparator(columnName: $0.column, order: $0.ascending ? .forward : .reverse)] } ?? [] }
+        set { orderByText = newValue.first?.sortSpec.text ?? "" }
+    }
     var rowLimit: Int
     /// The columns from the catalog. They fill the header when a query returns no row.
     var knownColumns: [ResultColumn] = []
@@ -49,6 +56,25 @@ final class QueryTab: Identifiable {
         self.connectionName = connectionName
         self.rowLimit = rowLimit
         self.rowLimitText = String(rowLimit)
+    }
+
+    /// The column names of this table. The filter field completes against these.
+    var completionNames: [String] {
+        let source = knownColumns.isEmpty ? (result?.columns ?? []) : knownColumns
+        return source.map(\.name)
+    }
+
+    /// An example filter that names a real column of this table.
+    var filterPlaceholder: String {
+        let source = knownColumns.isEmpty ? (result?.columns ?? []) : knownColumns
+        guard let column = FilterExample.pick(from: source) else { return "column = 'value'" }
+        return FilterExample.text(for: column)
+    }
+
+    /// An example sort that names a real column of this table.
+    var orderByPlaceholder: String {
+        guard let first = completionNames.first else { return "column DESC" }
+        return "\(first) DESC"
     }
 
     /// The value the inspector shows.

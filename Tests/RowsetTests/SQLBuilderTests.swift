@@ -17,7 +17,7 @@ final class SQLBuilderTests: XCTestCase {
 
     func testSelectRowsWithoutFilterOrSort() {
         let sql = SQLBuilder.selectRows(
-            schema: "public", table: "component", filter: "", sort: nil, limit: 50)
+            schema: "public", table: "component", filter: "", orderBy: "", limit: 50)
         XCTAssertEqual(sql, "SELECT * FROM \"public\".\"component\"\nLIMIT 50")
     }
 
@@ -26,21 +26,27 @@ final class SQLBuilderTests: XCTestCase {
             schema: "public",
             table: "component",
             filter: "  article_identifier = '1004.1'  ",
-            sort: SortSpec(column: "created_at", ascending: false),
+            orderBy: "created_at DESC",
             limit: 25)
 
         XCTAssertEqual(sql, """
             SELECT * FROM "public"."component"
             WHERE article_identifier = '1004.1'
-            ORDER BY "created_at" DESC
+            ORDER BY created_at DESC
             LIMIT 25
             """)
     }
 
     func testSelectRowsForcesAPositiveLimit() {
         let sql = SQLBuilder.selectRows(
-            schema: "s", table: "t", filter: "", sort: nil, limit: 0)
+            schema: "s", table: "t", filter: "", orderBy: "", limit: 0)
         XCTAssertTrue(sql.hasSuffix("LIMIT 1"))
+    }
+
+    func testSelectRowsPassesAnOrderExpressionThrough() {
+        let sql = SQLBuilder.selectRows(
+            schema: "public", table: "t", filter: "", orderBy: " created_at DESC, id ", limit: 5)
+        XCTAssertTrue(sql.contains("ORDER BY created_at DESC, id"))
     }
 
     func testCatalogQueriesEscapeTheSchemaName() {
