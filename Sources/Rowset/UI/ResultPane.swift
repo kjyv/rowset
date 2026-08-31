@@ -82,11 +82,29 @@ struct ResultPane: View {
     }
 
     private var table: some View {
+        tableView
+            .sheet(isPresented: showsRowInspector) {
+                RowInspectorSheet(
+                    result: result,
+                    rowID: $tab.quickLookRow,
+                    onClose: { tab.quickLookRow = nil })
+            }
+    }
+
+    /// The whole row view is open while the tab names a row for it.
+    private var showsRowInspector: Binding<Bool> {
+        Binding(
+            get: { tab.quickLookRow != nil },
+            set: { if !$0 { tab.quickLookRow = nil } })
+    }
+
+    private var tableView: some View {
         ResultTableView(
             result: result,
             sortOrder: $tab.sortOrder,
             selection: $tab.selection,
             revealColumn: $tab.revealColumn,
+            onQuickLook: { tab.quickLookRow = $0 },
             onOpenValue: { model.isInspectorVisible = true },
             onSortChange: onSortChange,
             editing: editable ? tab : nil)

@@ -230,6 +230,15 @@ There is no way back, on purpose. The statement may end up showing another table
 started on, so a filter field or an edit button would then lie about what is on screen. Open the
 table again from the sidebar for that.
 
+## Reading one whole row
+
+Press **space** on a row. Every column stands under the one before it, with its name and its
+type, so a wide table needs no sideways scrolling to read a single row.
+
+- The **arrow keys** walk to the row above or below.
+- **Space** again, or **Escape**, closes it.
+- **Copy Row** puts the row on the clipboard with its header, in the table formats.
+
 ## Pages
 
 A widget floats over the bottom of the grid:
@@ -252,7 +261,16 @@ all three make the old count wrong.
 
 The widget is the only place that sets the page size. There is no separate row field any more.
 
-### Pages in a console
+### Reading one whole row
+
+Press **space** on a row. Every column stands under the one before it, with its name and its
+type, so a wide table needs no sideways scrolling to read a single row.
+
+- The **arrow keys** walk to the row above or below.
+- **Space** again, or **Escape**, closes it.
+- **Copy Row** puts the row on the clipboard with its header, in the table formats.
+
+## Pages in a console
 
 A console pages as well, when the statement reads. The app wraps it, and a click on a column
 header puts the order on that wrapper:

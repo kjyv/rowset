@@ -13,6 +13,8 @@ struct ResultTableView: NSViewRepresentable {
     @Binding var selection: CellSelection?
     /// A column to scroll to once. The grid clears it after the jump.
     @Binding var revealColumn: String?
+    /// Runs when you press the space bar, with the row under the selection.
+    var onQuickLook: (Int) -> Void = { _ in }
     /// Runs when you double click a cell.
     var onOpenValue: () -> Void = {}
     /// Runs when you click a column header. The server does the sorting, so the caller must run
@@ -42,6 +44,9 @@ struct ResultTableView: NSViewRepresentable {
         }
         tableView.onDelete = { [weak coordinator] in
             coordinator?.setSelectionToNull()
+        }
+        tableView.onSpace = { [weak coordinator] in
+            coordinator?.openQuickLook()
         }
 
         tableView.style = .fullWidth
@@ -391,6 +396,14 @@ struct ResultTableView: NSViewRepresentable {
             field.removeFromSuperview()
             tableView?.window?.makeFirstResponder(tableView)
             return true
+        }
+
+        /// Opens the whole row view on the row of the selection.
+        func openQuickLook() {
+            guard let rowID = parent.selection?.focus.rowID,
+                  parent.result.row(id: rowID) != nil
+            else { return }
+            parent.onQuickLook(rowID)
         }
 
         /// Sets every cell of the block to NULL, where the column takes one.
@@ -787,6 +800,7 @@ final class OverdrawTableView: NSTableView {
     var onCellDrag: ((_ row: Int, _ column: Int) -> Void)?
     var onCopy: (() -> Void)?
     var onDelete: (() -> Void)?
+    var onSpace: (() -> Void)?
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -827,11 +841,16 @@ final class OverdrawTableView: NSTableView {
     /// The delete key sets the cells you picked to NULL, where the column allows one.
     override func keyDown(with event: NSEvent) {
         let deleteKeys: Set<UInt16> = [51, 117]  // delete, forward delete
-        guard deleteKeys.contains(event.keyCode), onDelete != nil else {
-            super.keyDown(with: event)
+        if deleteKeys.contains(event.keyCode), onDelete != nil {
+            onDelete?()
             return
         }
-        onDelete?()
+        // The space bar opens the whole row, the way the Finder opens a file.
+        if event.keyCode == 49, onSpace != nil {
+            onSpace?()
+            return
+        }
+        super.keyDown(with: event)
     }
 
     override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {

@@ -125,6 +125,8 @@ final class QueryTab: Identifiable {
     var selectedCell: CellAddress? { selection?.focus }
     /// A column to scroll to. The grid clears it once it jumped there.
     var revealColumn: String?
+    /// The row the whole row view shows. `nil` keeps it closed.
+    var quickLookRow: Int?
 
     // MARK: - Editing
 
