@@ -41,23 +41,25 @@ extension AppModel {
             limit: tab.rowLimit) + ";"
     }
 
-    /// Shows or hides the console of a table tab.
+    /// Turns a table tab into a console on the query it was showing.
     ///
-    /// The first time it opens, it takes the query of the filter fields. After that it keeps what
-    /// you wrote, so closing and opening the pane loses nothing.
-    func toggleConsole(_ tab: QueryTab) {
-        if !tab.showsConsole, !tab.didPrefillConsole {
-            resetConsoleFromFilter(tab)
-        }
-        tab.showsConsole.toggle()
-        saveSession()
-    }
+    /// The tab becomes a console tab in every way, so it runs the same code as one opened from
+    /// the tab bar. There is no way back, because the statement may end up showing another table
+    /// than the one it started on.
+    ///
+    /// The query is saved as a console of this connection, so it stands beside the others in the
+    /// list and outlives the tab.
+    func openConsole(on tab: QueryTab) {
+        guard case .table(_, let name) = tab.kind else { return }
 
-    /// Writes the query of the filter fields into the console, over whatever is there.
-    func resetConsoleFromFilter(_ tab: QueryTab) {
-        tab.sqlText = generatedSQL(for: tab)
+        let sql = "-- \(name)\n\n" + generatedSQL(for: tab)
+        let buffer = bufferStore.create(for: tab.connectionID, text: sql)
+
+        tab.becomeConsole()
+        tab.bufferID = buffer.id
+        tab.sqlText = sql
         tab.sqlCaret = 0
-        tab.didPrefillConsole = true
+        saveSession()
     }
 
     /// Runs the statement the caret is in.

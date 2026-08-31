@@ -19,7 +19,8 @@ final class QueryTab: Identifiable {
 
     let id = UUID()
     let connectionID: UUID
-    let kind: Kind
+    /// A table tab turns into a console once, and stays one.
+    private(set) var kind: Kind
     let connectionName: String
 
     /// Table tab state.
@@ -45,10 +46,6 @@ final class QueryTab: Identifiable {
     /// The buffer this console shows. Its text is kept per connection.
     var bufferID: UUID?
 
-    /// True when a table tab shows the console over its grid instead of the filter fields.
-    var showsConsole = false
-    /// Whether the console of this table tab has been filled from the filter fields already.
-    var didPrefillConsole = false
 
     var sqlStatements: [SQLStatement] { SQLStatementSplitter.statements(in: sqlText) }
 
@@ -77,10 +74,10 @@ final class QueryTab: Identifiable {
 
     /// True when a row can be found again by its key, which an UPDATE needs.
     ///
-    /// The console turns editing off. Its statement may join two tables or rename a column, and
-    /// an UPDATE built from such a result would hit the wrong rows.
+    /// A console is never editable. Its statement may join two tables or rename a column, and an
+    /// UPDATE built from such a result would hit the wrong rows.
     var isEditable: Bool {
-        if case .table = kind { return !primaryKey.isEmpty && !showsConsole }
+        if case .table = kind { return !primaryKey.isEmpty }
         return false
     }
 
@@ -180,8 +177,15 @@ final class QueryTab: Identifiable {
             orderByText: orderByText,
             sqlText: sqlText,
             bufferID: bufferID,
-            showsConsole: showsConsole,
             rowLimit: rowLimit)
+    }
+
+    /// Turns this tab into a console. A tab makes that move once and does not come back, because
+    /// the statement may end up showing another table than the one it started on.
+    func becomeConsole() {
+        kind = .sql
+        primaryKey = []
+        discardEdits()
     }
 
     var title: String {

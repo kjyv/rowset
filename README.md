@@ -200,26 +200,27 @@ Neither job asks what the words mean, so a grammar would add a build dependency 
 A parser earns its place only for colouring by meaning, such as marking a table apart from a
 column. That door stays open.
 
-### A console on a table
+### From a table to a console
 
-The terminal button beside the value pane button turns the filter fields of a table tab into a
-console. The grid below stays where it is, so the same rows are still in front of you.
-
-The console opens with the query the filter fields stood for, filter, sort and limit and all:
+The terminal button beside the value pane button turns a table tab into a console on the query it
+was showing:
 
 ```sql
+-- batch
+
 SELECT * FROM "public"."batch"
 WHERE slug = 'x'
 ORDER BY created_at DESC
 LIMIT 200;
 ```
 
-Take it further from there, run it with Command-Return, and the grid shows the result. **From
-Table** writes the query of the filter fields back over it. Closing the console and opening it
-again keeps what you wrote.
+The tab **becomes** a console tab. It runs the same code as one opened from the tab bar, the
+title changes to Console, and the query joins the saved consoles of that connection under the
+name **batch**.
 
-**Editing is off while a console is open.** A statement may join two tables or rename a column,
-and an UPDATE built from such a result would hit the wrong rows. Close the console to edit again.
+There is no way back, on purpose. The statement may end up showing another table than the one it
+started on, so a filter field or an edit button would then lie about what is on screen. Open the
+table again from the sidebar for that.
 
 ## Changing a value
 

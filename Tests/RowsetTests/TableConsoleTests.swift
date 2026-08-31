@@ -57,76 +57,100 @@ final class TableConsoleTests: XCTestCase {
         XCTAssertEqual(statements.count, 1, "a semicolon inside the filter is no separator")
     }
 
-    // MARK: - Opening and closing
+    // MARK: - The tab becomes a console
 
-    func testOpeningTheConsoleFillsItOnce() {
+    func testTheTabTurnsIntoAConsole() {
         let model = model()
         let tab = tableTab()
+        XCTAssertEqual(tab.title, "batch")
 
-        model.toggleConsole(tab)
-        XCTAssertTrue(tab.showsConsole)
-        XCTAssertTrue(tab.sqlText.contains("SELECT * FROM \"public\".\"batch\""))
+        model.openConsole(on: tab)
+        XCTAssertEqual(tab.kind, .sql, "it is a console tab now, and runs the same code as one")
+        XCTAssertEqual(tab.title, "Console")
     }
 
-    func testClosingAndOpeningKeepsWhatYouWrote() {
+    func testTheConsoleHoldsTheQueryOfTheFields() {
         let model = model()
         let tab = tableTab()
+        tab.filterText = "slug = 'x'"
+        tab.orderByText = "created_at DESC"
 
-        model.toggleConsole(tab)
-        tab.sqlText = "SELECT count(*) FROM batch"
-        model.toggleConsole(tab)
-        XCTAssertFalse(tab.showsConsole)
-
-        model.toggleConsole(tab)
-        XCTAssertEqual(tab.sqlText, "SELECT count(*) FROM batch", "your text survives")
+        model.openConsole(on: tab)
+        XCTAssertTrue(tab.sqlText.contains("WHERE slug = 'x'"))
+        XCTAssertTrue(tab.sqlText.contains("ORDER BY created_at DESC"))
+        XCTAssertTrue(tab.sqlText.hasPrefix("-- batch"), "a title line names it in the list")
     }
 
-    func testFromTableWritesTheQueryAgain() {
+    /// The query joins the saved consoles of the connection, so it outlives the tab.
+    func testTheQueryIsSavedAsAConsoleOfTheConnection() {
         let model = model()
         let tab = tableTab()
+        XCTAssertTrue(model.buffers(for: tab).isEmpty)
 
-        model.toggleConsole(tab)
-        tab.sqlText = "SELECT 1"
-        tab.filterText = "id = 7"
-        model.resetConsoleFromFilter(tab)
-
-        XCTAssertTrue(tab.sqlText.contains("WHERE id = 7"))
-        XCTAssertEqual(tab.sqlCaret, 0)
+        model.openConsole(on: tab)
+        let saved = model.buffers(for: tab)
+        XCTAssertEqual(saved.count, 1)
+        XCTAssertEqual(saved.first?.id, tab.bufferID)
+        XCTAssertEqual(saved.first?.title, "batch", "the title line gives it a name")
     }
 
-    // MARK: - Editing
+    func testTheCommentLineIsNotPartOfTheStatement() {
+        let model = model()
+        let tab = tableTab()
+        model.openConsole(on: tab)
 
-    /// A console statement may join two tables, and an UPDATE built from that result would hit
-    /// the wrong rows.
-    func testTheConsoleTurnsEditingOff() {
+        let statements = SQLStatementSplitter.statements(in: tab.sqlText)
+        XCTAssertEqual(statements.count, 1)
+        XCTAssertTrue(statements[0].text.hasPrefix("SELECT *"))
+    }
+
+    /// A console statement may join two tables or rename a column, and an UPDATE built from such
+    /// a result would hit the wrong rows.
+    func testAConsoleIsNotEditable() {
         let model = model()
         let tab = tableTab()
         XCTAssertTrue(tab.isEditable)
 
-        model.toggleConsole(tab)
+        model.openConsole(on: tab)
         XCTAssertFalse(tab.isEditable)
-
-        model.toggleConsole(tab)
-        XCTAssertTrue(tab.isEditable, "closing it gives editing back")
+        XCTAssertTrue(tab.primaryKey.isEmpty, "the key of the old table is gone with it")
     }
 
-    func testAConsoleTabNeedsNoGeneratedQuery() {
+    func testEditsAreDroppedOnTheWay() {
+        let model = model()
+        let tab = tableTab()
+
+        var result = ResultSet()
+        result.columns = [ResultColumn(id: 0, name: "id", typeName: "integer")]
+        result.rows = [ResultRow(id: 0, values: [DisplayValue.make(text: "1")])]
+        tab.result = result
+        tab.setEdit("2", at: CellAddress(rowID: 0, columnID: 0))
+        XCTAssertTrue(tab.hasEdits)
+
+        model.openConsole(on: tab)
+        XCTAssertFalse(tab.hasEdits, "a change that can no longer be sent must not linger")
+    }
+
+    func testAConsoleTabIsNotConvertedAgain() {
         let model = model()
         let tab = QueryTab(
             connectionID: UUID(), connectionName: "t", kind: .sql, rowLimit: 50)
         tab.sqlText = "SELECT 1"
-        XCTAssertEqual(model.generatedSQL(for: tab), "SELECT 1", "it keeps its own text")
+
+        model.openConsole(on: tab)
+        XCTAssertEqual(tab.sqlText, "SELECT 1", "nothing to convert, nothing changed")
+        XCTAssertTrue(model.buffers(for: tab).isEmpty)
     }
 
     // MARK: - The session
 
-    func testTheStateOfTheConsoleIsWrittenDown() {
+    func testAConvertedTabIsWrittenDownAsAConsole() {
+        let model = model()
         let tab = tableTab()
-        tab.showsConsole = true
-        tab.sqlText = "SELECT 1"
+        model.openConsole(on: tab)
 
         let state = tab.state
-        XCTAssertTrue(state.showsConsole)
-        XCTAssertEqual(state.sqlText, "SELECT 1")
+        XCTAssertTrue(state.isSQLTab)
+        XCTAssertEqual(state.bufferID, tab.bufferID)
     }
 }

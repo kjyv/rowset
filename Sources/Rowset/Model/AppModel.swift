@@ -133,9 +133,6 @@ final class AppModel {
                     rowLimit: tabState.rowLimit)
                 tab.filterText = tabState.filterText
                 tab.orderByText = tabState.orderByText
-                tab.sqlText = tabState.sqlText
-                tab.showsConsole = tabState.showsConsole
-                tab.didPrefillConsole = !tabState.sqlText.isEmpty
             } else {
                 tab = QueryTab(
                     connectionID: connection.id,
