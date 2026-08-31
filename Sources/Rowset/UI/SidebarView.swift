@@ -6,8 +6,6 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            filterField
-
             List(selection: $model.sidebarSelection) {
                 if model.sidebarFilter.isEmpty {
                     Section("Connections") {
@@ -40,29 +38,6 @@ struct SidebarView: View {
             model.syncConnections()
             model.saveSession()
         }
-    }
-
-    private var filterField: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-                .font(.caption)
-            TextField("Filter tables", text: $model.sidebarFilter)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12))
-            if !model.sidebarFilter.isEmpty {
-                Button {
-                    model.sidebarFilter = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.borderless)
-                .help("Clear the filter")
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
     }
 
     /// The tables that match, under the name of the connection they belong to.
@@ -124,12 +99,29 @@ struct SidebarView: View {
             .disabled(model.selectedBookmarkID == nil)
             .help("Edit the selected connection")
 
-            Spacer()
-
             if let error = model.store.loadError {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
                     .help(error)
+            }
+
+            Divider().frame(height: 14)
+
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+                .font(.caption)
+            TextField("Filter tables", text: $model.sidebarFilter)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+
+            if !model.sidebarFilter.isEmpty {
+                Button {
+                    model.sidebarFilter = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .help("Clear the filter")
             }
         }
         .buttonStyle(.borderless)
