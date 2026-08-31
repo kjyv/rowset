@@ -113,8 +113,10 @@ final class AppModel {
         let needed = Set(expanded).union(tabs.map(\.connectionID))
         for bookmarkID in needed {
             guard let connection = connections[bookmarkID] else { continue }
-            connection.isExpanded = expanded.contains(bookmarkID)
+            // Connect first. Opening the row before the connect makes the sidebar start a
+            // second connect of its own.
             await connect(to: bookmarkID)
+            connection.isExpanded = expanded.contains(bookmarkID)
             await connection.restoreExpansion(state.nodes(for: bookmarkID))
         }
 

@@ -30,9 +30,12 @@ struct ContentView: View {
 struct HiddenToolbarTitle: ViewModifier {
     func body(content: Content) -> some View {
         if #available(macOS 15.0, *) {
-            content.toolbar(removing: .title)
-        } else {
+            // The title goes, and the empty row it sat in goes with it.
             content
+                .toolbar(removing: .title)
+                .toolbar(.hidden, for: .windowToolbar)
+        } else {
+            content.toolbar(.hidden, for: .windowToolbar)
         }
     }
 }

@@ -30,6 +30,8 @@ actor PostgresSession {
 
     private var connection: PostgresConnection?
     private var nextConnectionID = 1
+    /// The connect that is running now. A second caller joins it instead of opening a rival.
+    private var connectTask: Task<Void, any Error>?
     private let logger = Logger(label: "tech.alcemy.Rowset.postgres")
 
     init(bookmark: Bookmark) {
@@ -43,7 +45,24 @@ actor PostgresSession {
 
     // MARK: - Lifecycle
 
+    /// Opens the connection, or joins the connect that is already running.
+    ///
+    /// Two callers used to race here. Both passed `close` while the field was still empty, both
+    /// opened a connection, and the second overwrote the first. PostgresNIO then failed the
+    /// assertion `PostgresConnection deinitialized before being closed` and the app stopped.
     func connect() async throws {
+        if let connectTask {
+            try await connectTask.value
+            return
+        }
+
+        let task = Task { try await self.openConnection() }
+        connectTask = task
+        defer { connectTask = nil }
+        try await task.value
+    }
+
+    private func openConnection() async throws {
         await close()
 
         let token = try await AWSTokenProvider.authToken(for: bookmark)
@@ -58,11 +77,15 @@ actor PostgresSession {
         let id = nextConnectionID
         nextConnectionID += 1
 
-        connection = try await PostgresConnection.connect(
+        let opened = try await PostgresConnection.connect(
             on: PostgresConnection.defaultEventLoopGroup.any(),
             configuration: configuration,
             id: id,
             logger: logger)
+
+        // Never drop a live connection on the floor. Closing it is the caller of this rule.
+        await close()
+        connection = opened
     }
 
     func close() async {

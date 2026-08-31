@@ -135,6 +135,24 @@ final class LiveConnectionTests: XCTestCase {
         XCTAssertEqual(isNull.rows.count, 1, "IS NULL matches the missing value")
     }
 
+    /// Two connects at once used to open two connections and drop one without closing it.
+    /// PostgresNIO then failed an assertion and the app stopped at startup.
+    func testTwoConnectsAtOnceOpenOneConnection() async throws {
+        let bookmark = try liveBookmark()
+        let session = PostgresSession(bookmark: bookmark)
+        defer { Task { await session.close() } }
+
+        async let first: Void = session.connect()
+        async let second: Void = session.connect()
+        _ = try await (first, second)
+
+        let open = await session.isOpen
+        XCTAssertTrue(open, "the session must hold one open connection")
+
+        let result = try await session.query("SELECT 1", maxRows: 1)
+        XCTAssertEqual(result.rows.first?.values.first?.text, "1")
+    }
+
     func testAWrongStatementKeepsTheConnectionOpen() async throws {
         let bookmark = try liveBookmark()
         let session = PostgresSession(bookmark: bookmark)

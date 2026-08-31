@@ -150,9 +150,7 @@ struct ResultTableView: NSViewRepresentable {
             guard let tableView, let address,
                   let row = parent.result.rows.firstIndex(where: { $0.id == address.rowID })
             else { return }
-            tableView.reloadData(
-                forRowIndexes: IndexSet(integer: row),
-                columnIndexes: IndexSet(integersIn: 0..<tableView.tableColumns.count))
+            tableView.rowView(atRow: row, makeIfNecessary: false)?.needsDisplay = true
         }
 
         func rebuildColumns() {
@@ -181,28 +179,34 @@ struct ResultTableView: NSViewRepresentable {
             parent.result.rows.count
         }
 
+        /// No cell view. One row view draws the whole row, see `GridRowView`.
         func tableView(
             _ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int
         ) -> NSView? {
-            guard let tableColumn,
-                  let columnIndex = tableView.tableColumns.firstIndex(of: tableColumn),
-                  parent.result.rows.indices.contains(row),
-                  parent.result.columns.indices.contains(columnIndex)
-            else { return nil }
+            nil
+        }
 
+        func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+            let view = tableView.makeView(withIdentifier: GridRowView.identifier, owner: self)
+                as? GridRowView ?? GridRowView()
+            view.owner = self
+            view.rowIndex = row
+            return view
+        }
+
+        /// What the row at `row` must draw. The row view asks for this while it draws.
+        func rowContent(_ row: Int) -> (values: [DisplayValue], selectedColumn: Int?)? {
+            guard parent.result.rows.indices.contains(row) else { return nil }
             let resultRow = parent.result.rows[row]
-            let column = parent.result.columns[columnIndex]
-            let value = resultRow.value(at: columnIndex)
 
-            let cell = tableView.makeView(withIdentifier: GridCellView.identifier, owner: self)
-                as? GridCellView ?? GridCellView()
+            var selected: Int?
+            if let address = parent.selectedCell, address.rowID == resultRow.id,
+               let index = parent.result.columns.firstIndex(where: { $0.id == address.columnID }) {
+                selected = index
+            }
 
-            cell.configure(
-                preview: value.preview,
-                isNull: value.isNull,
-                isRaw: value.isRaw,
-                isSelected: parent.selectedCell == CellAddress(rowID: resultRow.id, columnID: column.id))
-            return cell
+            let values = parent.result.columns.indices.map { resultRow.value(at: $0) }
+            return (values, selected)
         }
 
         // MARK: Clicks
@@ -326,20 +330,17 @@ private final class BlockBox {
     func run() { action() }
 }
 
-/// One cell. It fills the whole row and the whole column, so no point of the grid is dead and no
-/// stripe of background shows between the selection and the column line.
+/// One row of the grid. It draws every cell of the row itself.
 ///
-/// The cell holds no `NSTextField`. A text field brings Auto Layout, its own drawing and its own
-/// tracking, and the table builds one per visible cell on every scroll step. This view draws the
-/// string itself with attributes it built once, which is what makes a long scroll smooth.
-///
-/// The cost is that the text here takes no selection. The value pane reads and copies instead.
-private final class GridCellView: NSView {
-    static let identifier = NSUserInterfaceItemIdentifier("RowsetGridCell")
+/// A view per cell was the reason the grid stuttered. The table built thousands of `NSView`
+/// objects, and each one drew its string through TextKit, which builds a whole text layout for
+/// every call. One view per row plus Core Text removes both costs. A sideways scroll now redraws
+/// views that already exist, so no white band appears.
+final class GridRowView: NSTableRowView {
+    static let identifier = NSUserInterfaceItemIdentifier("RowsetGridRow")
 
-    private enum Style: Hashable {
-        case normal, null, raw
-    }
+    weak var owner: ResultTableView.Coordinator?
+    var rowIndex = -1
 
     private static let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
 
@@ -348,31 +349,16 @@ private final class GridCellView: NSView {
         return NSFont(descriptor: descriptor, size: 12) ?? font
     }()
 
-    private static let lineHeight: CGFloat = ceil(font.ascender - font.descender + font.leading)
-
-    private static let paragraphStyle: NSParagraphStyle = {
-        let style = NSMutableParagraphStyle()
-        style.lineBreakMode = .byTruncatingTail
-        return style
-    }()
-
     /// One dictionary per look. Building these per cell would allocate on every scroll step.
-    private static let attributes: [Style: [NSAttributedString.Key: Any]] = [
-        .normal: [
-            .font: font, .foregroundColor: NSColor.labelColor, .paragraphStyle: paragraphStyle,
-        ],
-        .null: [
-            .font: italicFont, .foregroundColor: NSColor.secondaryLabelColor,
-            .paragraphStyle: paragraphStyle,
-        ],
-        .raw: [
-            .font: font, .foregroundColor: NSColor.systemOrange, .paragraphStyle: paragraphStyle,
-        ],
-    ]
+    private static let normalAttributes: [NSAttributedString.Key: Any] =
+        [.font: font, .foregroundColor: NSColor.labelColor]
+    private static let nullAttributes: [NSAttributedString.Key: Any] =
+        [.font: italicFont, .foregroundColor: NSColor.secondaryLabelColor]
+    private static let rawAttributes: [NSAttributedString.Key: Any] =
+        [.font: font, .foregroundColor: NSColor.systemOrange]
 
-    private var text = ""
-    private var style: Style = .normal
-    private var isSelectedCell = false
+    private static let leftInset: CGFloat = 6
+    private static let rightInset: CGFloat = 7
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -386,38 +372,82 @@ private final class GridCellView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not supported") }
 
-    override var isFlipped: Bool { true }
-
     override func draw(_ dirtyRect: NSRect) {
-        if isSelectedCell {
-            NSColor.controlAccentColor.withAlphaComponent(0.25).setFill()
-            bounds.fill()
-        }
-
-        NSColor.gridColor.setFill()
-        NSRect(x: bounds.maxX - 1, y: 0, width: 1, height: bounds.height).fill()
-
-        guard !text.isEmpty, bounds.width > 14 else { return }
-        let top = ((bounds.height - Self.lineHeight) / 2).rounded()
-        let textRect = NSRect(
-            x: 6, y: top, width: bounds.width - 13, height: Self.lineHeight)
-        (text as NSString).draw(
-            with: textRect,
-            options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
-            attributes: Self.attributes[style],
-            context: nil)
+        super.draw(dirtyRect)
+        drawContent(in: dirtyRect)
     }
 
-    func configure(preview: String, isNull: Bool, isRaw: Bool, isSelected: Bool) {
-        let newText = isNull ? "NULL" : preview
-        let newStyle: Style = isNull ? .null : (isRaw ? .raw : .normal)
+    private func drawContent(in dirtyRect: NSRect) {
+        guard let owner,
+              let tableView = owner.tableView,
+              let content = owner.rowContent(rowIndex),
+              let context = NSGraphicsContext.current?.cgContext
+        else { return }
 
-        // A reused cell often gets what it already shows. Skip the redraw then.
-        guard newText != text || newStyle != style || isSelected != isSelectedCell else { return }
-        text = newText
-        style = newStyle
-        isSelectedCell = isSelected
-        needsDisplay = true
+        // Only the columns that touch the dirty area need any work.
+        let columns = tableView.columnIndexes(in: dirtyRect)
+        guard !columns.isEmpty else { return }
+
+        context.saveGState()
+        // Core Text draws upward from the baseline. This view is flipped, so turn the page over
+        // once for the whole row instead of once per cell.
+        context.textMatrix = .identity
+        context.translateBy(x: 0, y: bounds.height)
+        context.scaleBy(x: 1, y: -1)
+
+        let ascent = Self.font.ascender
+        let descent = -Self.font.descender
+        let baseline = ((bounds.height - (ascent + descent)) / 2 + descent).rounded()
+
+        for column in columns {
+            guard content.values.indices.contains(column) else { continue }
+            let frame = tableView.rect(ofColumn: column)
+
+            if content.selectedColumn == column {
+                context.setFillColor(
+                    NSColor.controlAccentColor.withAlphaComponent(0.25).cgColor)
+                context.fill(CGRect(x: frame.minX, y: 0, width: frame.width, height: bounds.height))
+            }
+
+            context.setFillColor(NSColor.gridColor.cgColor)
+            context.fill(CGRect(x: frame.maxX - 1, y: 0, width: 1, height: bounds.height))
+
+            let available = frame.width - Self.leftInset - Self.rightInset
+            guard available > 4 else { continue }
+
+            let value = content.values[column]
+            let text = value.isNull ? "NULL" : value.preview
+            guard !text.isEmpty else { continue }
+
+            let attributes = value.isNull
+                ? Self.nullAttributes
+                : (value.isRaw ? Self.rawAttributes : Self.normalAttributes)
+
+            guard let line = Self.line(for: text, attributes: attributes, width: available)
+            else { continue }
+
+            context.saveGState()
+            context.clip(to: CGRect(
+                x: frame.minX + Self.leftInset, y: 0, width: available, height: bounds.height))
+            context.textPosition = CGPoint(x: frame.minX + Self.leftInset, y: baseline)
+            CTLineDraw(line, context)
+            context.restoreGState()
+        }
+
+        context.restoreGState()
+    }
+
+    /// Builds one line of text and cuts it with an ellipsis when it does not fit.
+    private static func line(
+        for text: String, attributes: [NSAttributedString.Key: Any], width: CGFloat
+    ) -> CTLine? {
+        let attributed = NSAttributedString(string: text, attributes: attributes)
+        let line = CTLineCreateWithAttributedString(attributed)
+        guard CTLineGetTypographicBounds(line, nil, nil, nil) > Double(width) else { return line }
+
+        let token = CTLineCreateWithAttributedString(
+            NSAttributedString(string: "\u{2026}", attributes: attributes))
+        return CTLineCreateTruncatedLine(line, Double(width), .end, token) ?? line
     }
 }
 
@@ -435,12 +465,13 @@ enum Clipboard {
 /// rows are ready before they arrive. The cost is memory for the extra cell views.
 final class OverdrawTableView: NSTableView {
     /// How far above and below the window AppKit prepares, in points.
-    /// At a row height of 20 this is about 100 rows on each side.
+    /// At a row height of 20 this is about 100 rows on each side. One row is one view now, so
+    /// this band is cheap.
     static let verticalOverdraw: CGFloat = 2_000
 
-    /// How far left and right AppKit prepares, in points.
-    /// At a column width of 170 this is about 9 columns on each side.
-    static let horizontalOverdraw: CGFloat = 1_600
+    /// How far left and right AppKit renders ahead, in points.
+    /// A row view already spans the whole table, so this only fills the layer in advance.
+    static let horizontalOverdraw: CGFloat = 900
 
     override func prepareContent(in rect: NSRect) {
         super.prepareContent(
