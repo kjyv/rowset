@@ -30,8 +30,13 @@ enum SidebarSelection: Hashable {
 @MainActor
 @Observable
 final class AppModel {
-    let store = BookmarkStore()
-    private let sessionStore = SessionStore()
+    let store: BookmarkStore
+    private let sessionStore: SessionStore
+
+    init(store: BookmarkStore? = nil, sessionStore: SessionStore? = nil) {
+        self.store = store ?? BookmarkStore()
+        self.sessionStore = sessionStore ?? SessionStore()
+    }
 
     var connections: [UUID: ConnectionModel] = [:]
     var tabs: [QueryTab] = []
@@ -268,6 +273,34 @@ final class AppModel {
         }
         let next = (current + offset + tabs.count) % tabs.count
         selectedTabID = tabs[next].id
+    }
+
+    /// The text a tab shows after its name, or `nil` when the name alone is clear.
+    ///
+    /// Two rules ask for it. More than one connection means a table name says nothing about the
+    /// database it came from. Two open tabs of the same table name from different schemas need
+    /// the schema as well.
+    func qualifier(for tab: QueryTab) -> String? {
+        var parts: [String] = []
+
+        if case .table(let schema, let name) = tab.kind, needsSchema(name: name) {
+            parts.append(schema)
+        }
+        if store.bookmarks.count > 1 {
+            parts.append(tab.connectionName)
+        }
+
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// True when another open tab shows the same table name out of another schema.
+    private func needsSchema(name: String) -> Bool {
+        var schemas: Set<String> = []
+        for tab in tabs {
+            guard case .table(let schema, let other) = tab.kind, other == name else { continue }
+            schemas.insert(schema)
+        }
+        return schemas.count > 1
     }
 
     var selectedTab: QueryTab? {

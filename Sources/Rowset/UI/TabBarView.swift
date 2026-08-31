@@ -14,6 +14,7 @@ struct TabBarView: View {
                     ForEach(model.tabs) { tab in
                         TabButton(
                             tab: tab,
+                            qualifier: model.qualifier(for: tab),
                             isSelected: tab.id == model.selectedTabID,
                             select: { model.selectedTabID = tab.id },
                             close: { model.closeTab(id: tab.id) })
@@ -46,6 +47,8 @@ struct TabBarView: View {
 
 private struct TabButton: View {
     @Bindable var tab: QueryTab
+    /// The database, and the schema when two tabs share a table name.
+    let qualifier: String?
     let isSelected: Bool
     let select: () -> Void
     let close: () -> Void
@@ -61,6 +64,13 @@ private struct TabButton: View {
             Text(tab.title)
                 .font(.system(size: 12))
                 .lineLimit(1)
+
+            if let qualifier {
+                Text(qualifier)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
 
             if tab.isRunning {
                 ProgressView().controlSize(.mini)
