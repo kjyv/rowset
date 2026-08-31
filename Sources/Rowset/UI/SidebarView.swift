@@ -26,6 +26,13 @@ struct SidebarView: View {
                 model.openSidebarSelection()
                 return .handled
             }
+            // The double click of a list is its primary action. SwiftUI already owns the
+            // double click of the table underneath, so a recognizer of my own never won.
+            .contextMenu(forSelectionType: SidebarSelection.self) { _ in
+                // Each row carries its own menu, which fits what that row is.
+            } primaryAction: { rows in
+                model.openSidebarSelection(rows.first)
+            }
 
             Divider()
             toolbar
@@ -154,29 +161,45 @@ struct BookmarkSection: View {
         DisclosureGroup(isExpanded: isExpanded) {
             content
         } label: {
-            label.tag(SidebarSelection.bookmark(bookmark.id))
+            // The menu belongs on the label, not on the group. On the group every table and
+            // column underneath inherited it and offered to connect a connection.
+            label
+                .tag(SidebarSelection.bookmark(bookmark.id))
+                .contextMenu { connectionMenu }
         }
         .onChange(of: isExpanded.wrappedValue) { _, expanded in
             model.saveSession()
             guard expanded, let connection, connection.state == .disconnected else { return }
             Task { await model.connect(to: bookmark.id) }
         }
-        .contextMenu {
-            Button("Connect") { Task { await model.connect(to: bookmark.id) } }
+    }
+
+    /// The menu of a connection row. It offers what the state allows, and nothing else.
+    @ViewBuilder
+    private var connectionMenu: some View {
+        let state = connection?.state ?? .disconnected
+
+        switch state {
+        case .connected:
             Button("Disconnect") { Task { await model.disconnect(bookmarkID: bookmark.id) } }
             Button("Refresh") { Task { await connection?.refresh() } }
             Divider()
             Button("New Query Tab") {
                 if let connection { model.openSQLTab(connection: connection) }
             }
-            .disabled(connection?.state.isConnected != true)
-            Divider()
-            Button("Duplicate") { model.duplicate(bookmarkID: bookmark.id) }
-            Button("Edit…") { model.editedBookmark = bookmark }
-            Button("Delete", role: .destructive) {
-                Task { await model.forget(bookmarkID: bookmark.id) }
-                model.store.remove(id: bookmark.id)
-            }
+        case .connecting:
+            Button("Connecting…") {}
+                .disabled(true)
+        case .disconnected, .failed:
+            Button("Connect") { Task { await model.connect(to: bookmark.id) } }
+        }
+
+        Divider()
+        Button("Duplicate") { model.duplicate(bookmarkID: bookmark.id) }
+        Button("Edit…") { model.editedBookmark = bookmark }
+        Button("Delete", role: .destructive) {
+            Task { await model.forget(bookmarkID: bookmark.id) }
+            model.store.remove(id: bookmark.id)
         }
     }
 
@@ -302,9 +325,9 @@ struct TreeNodeRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        // A simultaneous gesture leaves the single click to the list, which is what selects the
-        // row. A plain onTapGesture took the whole row and left only a thin band to click.
-        .simultaneousGesture(TapGesture(count: 2).onEnded { open() })
+        // No tap gesture here. Any gesture on a row swallows the click that selects it, and only
+        // the padding above and below the text stayed clickable. SidebarDoubleClick handles the
+        // double click on the table underneath instead.
         .contextMenu {
             if node.kind.isTableLike {
                 Button("Open") { open() }
@@ -353,7 +376,6 @@ struct FilterResultRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .simultaneousGesture(TapGesture(count: 2).onEnded { open() })
         .contextMenu {
             Button("Open") { open() }
             Button("Copy Name") {

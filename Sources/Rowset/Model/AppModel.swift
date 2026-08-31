@@ -353,6 +353,13 @@ final class AppModel {
         Task { await runTableQuery(tab) }
     }
 
+    /// Opens one row of the sidebar. A double click passes the row it hit.
+    func openSidebarSelection(_ row: SidebarSelection?) {
+        guard let row else { return }
+        sidebarSelection = row
+        openSidebarSelection()
+    }
+
     /// Opens whatever the sidebar has selected. The Return key calls this.
     func openSidebarSelection() {
         switch sidebarSelection {
