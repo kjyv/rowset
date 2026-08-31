@@ -111,7 +111,9 @@ struct SQLTabView: View {
         }
         .font(.caption)
         .padding(.horizontal, 10)
-        .padding(.vertical, 5)
+        // A fixed height on purpose. The spinner is taller than the text beside it, so the bar
+        // grew while a query ran, pushed the grid up, and the page widget moved with it.
+        .frame(height: 22)
         .background(.bar)
     }
 

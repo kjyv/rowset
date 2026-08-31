@@ -12,6 +12,17 @@ struct PageBar: View {
     /// The page sizes the menu offers.
     static let pageSizes = [25, 50, 100, 200, 500, 1000]
 
+    /// The font of every part of the bar.
+    ///
+    /// Each label sets it itself. A `Menu` label does not always take the font of the view
+    /// around it before the first frame, and it then draws once at the default control size.
+    /// That single frame is what looked like the text jumping in size.
+    static let font = Font.system(size: 11)
+
+    /// Room kept for the numbers, so a wider one does not move the bar.
+    static let rangeWidth: CGFloat = 66
+    static let totalWidth: CGFloat = 62
+
     // MARK: - One widget, two owners
     //
     // A table tab pages its own query. A console pages the statement it ran, wrapped in a SELECT.
@@ -74,12 +85,14 @@ struct PageBar: View {
                 await goTo(last)
             }
         }
-        .font(.system(size: 11))
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(.regularMaterial, in: Capsule())
         .overlay(Capsule().stroke(.separator, lineWidth: 0.5))
         .shadow(radius: 6, y: 2)
+        // SwiftUI animates a changed number by scaling its digits, which reads as the font
+        // growing and shrinking. Nothing here is worth an animation.
+        .transaction { $0.animation = nil }
     }
 
     private func step(
@@ -89,6 +102,7 @@ struct PageBar: View {
             Task { await action() }
         } label: {
             Image(systemName: symbol)
+                .font(Self.font)
                 .frame(width: 20, height: 18)
                 .contentShape(Rectangle())
         }
@@ -114,7 +128,10 @@ struct PageBar: View {
             }
         } label: {
             Text(tab.pageRange)
+                .font(Self.font)
                 .monospacedDigit()
+                .contentTransition(.identity)
+                .frame(width: Self.rangeWidth, alignment: .trailing)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
@@ -128,11 +145,14 @@ struct PageBar: View {
         } label: {
             HStack(spacing: 4) {
                 Text("of \(tab.totalDescription)")
+                    .font(Self.font)
                     .monospacedDigit()
+                    .contentTransition(.identity)
                 if tab.isCounting {
                     ProgressView().controlSize(.mini)
                 }
             }
+            .frame(width: Self.totalWidth, alignment: .leading)
         }
         .buttonStyle(.borderless)
         .disabled(tab.totalRows != nil || tab.isCounting)
