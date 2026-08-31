@@ -15,6 +15,9 @@ struct ResultTableView: NSViewRepresentable {
     @Binding var revealColumn: String?
     /// Runs when you double click a cell.
     var onOpenValue: () -> Void = {}
+    /// Runs when you click a column header. The server does the sorting, so the caller must run
+    /// the query again.
+    var onSortChange: () -> Void = {}
 
     static let rowHeight: CGFloat = 20
 
@@ -239,15 +242,17 @@ struct ResultTableView: NSViewRepresentable {
             _ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]
         ) {
             guard !isWritingSortDescriptors else { return }
-            guard let descriptor = tableView.sortDescriptors.first, let key = descriptor.key else {
+
+            if let descriptor = tableView.sortDescriptors.first, let key = descriptor.key {
+                parent.sortOrder = [
+                    ColumnComparator(
+                        columnName: key,
+                        order: descriptor.ascending ? .forward : .reverse)
+                ]
+            } else {
                 parent.sortOrder = []
-                return
             }
-            parent.sortOrder = [
-                ColumnComparator(
-                    columnName: key,
-                    order: descriptor.ascending ? .forward : .reverse)
-            ]
+            parent.onSortChange()
         }
 
         /// Copies the sort of the tab onto the header, so the arrow matches the query.

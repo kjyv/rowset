@@ -8,6 +8,8 @@ struct ResultPane: View {
     let model: AppModel
     @Bindable var tab: QueryTab
     let result: ResultSet
+    /// Runs when a column header changes the sort.
+    var onSortChange: () -> Void = {}
 
     @State private var dragStartHeight: Double?
 
@@ -62,7 +64,8 @@ struct ResultPane: View {
             sortOrder: $tab.sortOrder,
             selectedCell: $tab.selectedCell,
             revealColumn: $tab.revealColumn,
-            onOpenValue: { model.isInspectorVisible = true })
+            onOpenValue: { model.isInspectorVisible = true },
+            onSortChange: onSortChange)
     }
 }
 

@@ -19,11 +19,6 @@ struct TableTabView: View {
                 await model.runTableQuery(tab)
             }
         }
-        .onChange(of: tab.sortOrder) { _, newValue in
-            let spec = newValue.first?.sortSpec
-            guard spec != tab.sort else { return }
-            Task { await model.applySort(spec, to: tab) }
-        }
     }
 
     // MARK: - Filter bar
@@ -113,7 +108,10 @@ struct TableTabView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ResultPane(model: model, tab: tab, result: result)
+                ResultPane(model: model, tab: tab, result: result) {
+                    // A header click already wrote the new ORDER BY. Fetch the rows again.
+                    Task { await model.runTableQuery(tab) }
+                }
             }
         } else {
             ProgressView()
