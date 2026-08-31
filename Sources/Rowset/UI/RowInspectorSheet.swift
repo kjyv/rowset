@@ -28,11 +28,12 @@ struct RowInspectorSheet: View {
             footer
         }
         .frame(width: 620, height: 520)
-        .onKeyPress(.upArrow) { step(-1) }
-        .onKeyPress(.downArrow) { step(1) }
-        .onKeyPress(.space) {
-            onClose()
-            return .handled
+        // A hidden button, because onKeyPress asks for focus and a sheet gives none by itself.
+        // A shortcut needs no focus at all.
+        .background {
+            Button("", action: onClose)
+                .keyboardShortcut(.space, modifiers: [])
+                .opacity(0)
         }
     }
 
@@ -77,17 +78,19 @@ struct RowInspectorSheet: View {
     private var footer: some View {
         HStack(spacing: 10) {
             Button {
-                _ = step(-1)
+                step(-1)
             } label: {
                 Image(systemName: "chevron.up")
             }
+            .keyboardShortcut(.upArrow, modifiers: [])
             .disabled((index ?? 0) <= 0)
 
             Button {
-                _ = step(1)
+                step(1)
             } label: {
                 Image(systemName: "chevron.down")
             }
+            .keyboardShortcut(.downArrow, modifiers: [])
             .disabled((index ?? 0) >= result.rows.count - 1)
 
             Text("The arrow keys walk the rows")
@@ -110,12 +113,11 @@ struct RowInspectorSheet: View {
         .background(.bar)
     }
 
-    private func step(_ offset: Int) -> KeyPress.Result {
-        guard let index else { return .ignored }
+    private func step(_ offset: Int) {
+        guard let index else { return }
         let next = index + offset
-        guard result.rows.indices.contains(next) else { return .ignored }
+        guard result.rows.indices.contains(next) else { return }
         rowID = result.rows[next].id
-        return .handled
     }
 }
 

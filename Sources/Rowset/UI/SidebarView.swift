@@ -211,6 +211,7 @@ struct BookmarkSection: View {
 
     private var label: some View {
         HStack(spacing: 6) {
+            Spacer().frame(width: 3)
             Image(systemName: "cylinder.split.1x2")
                 .foregroundStyle(statusColor)
             VStack(alignment: .leading, spacing: 1) {
@@ -313,6 +314,8 @@ struct TreeNodeRow: View {
 
     private var rowLabel: some View {
         HStack(spacing: 6) {
+            // Air between the chevron of the row and what stands beside it.
+            Spacer().frame(width: 3)
             Image(systemName: node.kind.symbolName)
                 .foregroundStyle(.secondary)
                 .frame(width: 14)
