@@ -12,20 +12,46 @@ struct PageBar: View {
     /// The page sizes the menu offers.
     static let pageSizes = [25, 50, 100, 200, 500, 1000]
 
+    // MARK: - One widget, two owners
+    //
+    // A table tab pages its own query. A console pages the statement it ran, wrapped in a SELECT.
+    // The three calls below are the only place the two differ.
+
+    private func goTo(_ offset: Int) async {
+        switch tab.kind {
+        case .table: await model.goToPage(offset: offset, in: tab)
+        case .sql: await model.goToStatementPage(offset: offset, in: tab)
+        }
+    }
+
+    private func count() async {
+        switch tab.kind {
+        case .table: await model.countRows(in: tab)
+        case .sql: await model.countStatementRows(in: tab)
+        }
+    }
+
+    private func reload() async {
+        switch tab.kind {
+        case .table: await model.reloadTable(tab)
+        case .sql: await model.goToStatementPage(offset: 0, in: tab)
+        }
+    }
+
     var body: some View {
         HStack(spacing: 2) {
             step(
                 "chevron.left.to.line", help: "First page",
                 enabled: !tab.isFirstPage
             ) {
-                await model.goToPage(offset: 0, in: tab)
+                await goTo(0)
             }
 
             step(
                 "chevron.left", help: "Previous page",
                 enabled: !tab.isFirstPage
             ) {
-                await model.goToPage(offset: tab.pageOffset - tab.rowLimit, in: tab)
+                await goTo(tab.pageOffset - tab.rowLimit)
             }
 
             rangeMenu
@@ -36,16 +62,16 @@ struct PageBar: View {
                 "chevron.right", help: "Next page",
                 enabled: !tab.isLastPage
             ) {
-                await model.goToPage(offset: tab.pageOffset + tab.rowLimit, in: tab)
+                await goTo(tab.pageOffset + tab.rowLimit)
             }
 
             step(
                 "chevron.right.to.line", help: "Last page",
                 enabled: !tab.isLastPage
             ) {
-                if tab.lastPageOffset == nil { await model.countRows(in: tab) }
+                if tab.lastPageOffset == nil { await count() }
                 guard let last = tab.lastPageOffset else { return }
-                await model.goToPage(offset: last, in: tab)
+                await goTo(last)
             }
         }
         .font(.system(size: 11))
@@ -77,8 +103,7 @@ struct PageBar: View {
             ForEach(Self.pageSizes, id: \.self) { size in
                 Button {
                     tab.rowLimit = size
-                    tab.rowLimitText = String(size)
-                    Task { await model.reloadTable(tab) }
+                    Task { await reload() }
                 } label: {
                     if size == tab.rowLimit {
                         Label("\(size) rows a page", systemImage: "checkmark")
@@ -99,7 +124,7 @@ struct PageBar: View {
     /// The total. A plus means the count has not run yet.
     private var totalButton: some View {
         Button {
-            Task { await model.countRows(in: tab) }
+            Task { await count() }
         } label: {
             HStack(spacing: 4) {
                 Text("of \(tab.totalDescription)")

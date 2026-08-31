@@ -47,17 +47,6 @@ struct SQLTabView: View {
 
                 Divider().frame(height: 16)
 
-                Text("Read at most")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextField("", text: $tab.rowLimitText)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 60)
-                    .onSubmit { applyLimit() }
-                Text("rows")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
                 InspectorToggle(model: model)
 
                 Spacer()
@@ -96,6 +85,12 @@ struct SQLTabView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ResultPane(model: model, tab: tab, result: result)
+                    .overlay(alignment: .bottom) {
+                        if tab.showsPageBar {
+                            PageBar(model: model, tab: tab)
+                                .padding(.bottom, 14)
+                        }
+                    }
             }
         } else {
             Text("Write a statement, then press Command-Return.")
@@ -176,11 +171,4 @@ struct SQLTabView: View {
         return "statement \(index + 1) of \(statements.count)"
     }
 
-    private func applyLimit() {
-        guard let value = Int(tab.rowLimitText), value > 0 else {
-            tab.rowLimitText = String(tab.rowLimit)
-            return
-        }
-        tab.rowLimit = value
-    }
 }

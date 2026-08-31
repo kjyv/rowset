@@ -242,6 +242,26 @@ button needs the real count, so it runs one first.
 A new filter, sort, or page size puts you back on the first page and forgets the count, because
 all three make the old count wrong.
 
+The widget is the only place that sets the page size. There is no separate row field any more.
+
+### Pages in a console
+
+A console pages as well, when the statement reads. The app wraps it:
+
+```sql
+SELECT * FROM (
+SELECT * FROM batch WHERE slug LIKE 'a%'
+) AS _rowset_page
+LIMIT 26
+OFFSET 50
+```
+
+A statement that writes cannot be wrapped, so an INSERT, an UPDATE, a CREATE or an EXPLAIN runs
+as it stands and shows no widget. The rule is the first word: `SELECT`, `WITH`, `TABLE` and
+`VALUES` page, and everything else does not.
+
+Editing the statement, or moving the caret to another one, starts the pages and the count again.
+
 ## Changing a value
 
 1. Double click a cell. A short value opens a field in the cell. A boolean opens a menu of

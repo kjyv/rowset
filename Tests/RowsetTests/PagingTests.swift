@@ -143,3 +143,58 @@ final class PageStateTests: XCTestCase {
         XCTAssertNil(tab.totalRows, "a new filter makes the old count wrong")
     }
 }
+
+final class PageableStatementTests: XCTestCase {
+
+    func testAStatementThatReadsCanBePaged() {
+        XCTAssertTrue(SQLStatementSplitter.isPageable("SELECT 1"))
+        XCTAssertTrue(SQLStatementSplitter.isPageable("select * from t"))
+        XCTAssertTrue(SQLStatementSplitter.isPageable("WITH x AS (SELECT 1) SELECT * FROM x"))
+        XCTAssertTrue(SQLStatementSplitter.isPageable("VALUES (1), (2)"))
+        XCTAssertTrue(SQLStatementSplitter.isPageable("TABLE batch"))
+    }
+
+    /// Wrapping any of these would break them, so they run as they stand and show no widget.
+    func testAStatementThatWritesCannotBePaged() {
+        XCTAssertFalse(SQLStatementSplitter.isPageable("INSERT INTO t VALUES (1)"))
+        XCTAssertFalse(SQLStatementSplitter.isPageable("UPDATE t SET a = 1"))
+        XCTAssertFalse(SQLStatementSplitter.isPageable("DELETE FROM t"))
+        XCTAssertFalse(SQLStatementSplitter.isPageable("CREATE TABLE t (a int)"))
+        XCTAssertFalse(SQLStatementSplitter.isPageable("EXPLAIN SELECT 1"))
+        XCTAssertFalse(SQLStatementSplitter.isPageable("VACUUM"))
+        XCTAssertFalse(SQLStatementSplitter.isPageable(""))
+    }
+
+    func testACommentBeforeTheStatementDoesNotHideIt() {
+        XCTAssertTrue(SQLStatementSplitter.isPageable("-- note\nSELECT 1"))
+        XCTAssertTrue(SQLStatementSplitter.isPageable("/* note */ SELECT 1"))
+    }
+
+    func testTheWrapperNamesTheSubquery() {
+        XCTAssertEqual(SQLBuilder.page("SELECT 1", limit: 26, offset: 0), """
+            SELECT * FROM (
+            SELECT 1
+            ) AS _rowset_page
+            LIMIT 26
+            """)
+    }
+
+    func testTheWrapperAddsAnOffsetOnlyWhenItNeedsOne() {
+        let later = SQLBuilder.page("SELECT 1", limit: 26, offset: 50)
+        XCTAssertTrue(later.hasSuffix("LIMIT 26\nOFFSET 50"))
+    }
+
+    func testTheCountWrapsTheSameWay() {
+        XCTAssertEqual(SQLBuilder.countOf("SELECT 1"), """
+            SELECT count(*) FROM (
+            SELECT 1
+            ) AS _rowset_page
+            """)
+    }
+
+    /// The wrapper must stay one statement, or Run would send two.
+    func testTheWrappedStatementIsStillOne() {
+        let sql = SQLBuilder.page("SELECT 'a;b'", limit: 26, offset: 0)
+        XCTAssertEqual(SQLStatementSplitter.statements(in: sql).count, 1)
+    }
+}

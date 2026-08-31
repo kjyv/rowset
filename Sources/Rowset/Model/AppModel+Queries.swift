@@ -115,11 +115,72 @@ extension AppModel {
     }
 
     /// Runs the statement the caret is in.
+    ///
+    /// A statement that reads is wrapped in a page, so the widget works in a console as well. A
+    /// statement that writes runs as it stands, and shows no widget.
     func runCurrentStatement(_ tab: QueryTab) async {
         guard let connection = connections[tab.connectionID],
               let statement = tab.currentStatement
         else { return }
-        await run(statement.text, in: tab, connection: connection, expectedColumns: [])
+
+        // Another statement means another set of rows, so the page and the count start again.
+        if tab.pagedStatement != statement.text { tab.resetPaging() }
+
+        guard SQLStatementSplitter.isPageable(statement.text) else {
+            tab.pagedStatement = nil
+            await run(statement.text, in: tab, connection: connection, expectedColumns: [])
+            return
+        }
+
+        await runPage(of: statement.text, in: tab, connection: connection)
+    }
+
+    /// Moves a console to another page of the statement it is showing.
+    func goToStatementPage(offset: Int, in tab: QueryTab) async {
+        guard let connection = connections[tab.connectionID],
+              let statement = tab.pagedStatement
+        else { return }
+        tab.pageOffset = max(0, offset)
+        await runPage(of: statement, in: tab, connection: connection)
+    }
+
+    private func runPage(
+        of statement: String, in tab: QueryTab, connection: ConnectionModel
+    ) async {
+        let sql = SQLBuilder.page(statement, limit: tab.rowLimit + 1, offset: tab.pageOffset)
+        guard var result = await execute(sql, in: tab, connection: connection, expectedColumns: [])
+        else { return }
+
+        if result.rows.count > tab.rowLimit {
+            result.rows.removeLast()
+            result.truncated = true
+            tab.hasMoreRows = true
+        } else {
+            tab.hasMoreRows = false
+            tab.totalRows = tab.pageOffset + result.rows.count
+        }
+
+        tab.pagedStatement = statement
+        tab.result = result
+        saveSession()
+    }
+
+    /// Counts the rows the statement of a console gives back.
+    func countStatementRows(in tab: QueryTab) async {
+        guard let connection = connections[tab.connectionID],
+              let statement = tab.pagedStatement,
+              !tab.isCounting
+        else { return }
+
+        tab.isCounting = true
+        defer { tab.isCounting = false }
+
+        guard let result = try? await connection.run(SQLBuilder.countOf(statement), limit: 1),
+              let text = result.rows.first?.values.first?.text,
+              let count = Int(text)
+        else { return }
+
+        tab.totalRows = count
     }
 
     /// Runs every statement of the editor, one after the other.
@@ -131,6 +192,7 @@ extension AppModel {
         let statements = tab.sqlStatements
         guard !statements.isEmpty else { return }
 
+        tab.resetPaging()
         for statement in statements {
             await run(statement.text, in: tab, connection: connection, expectedColumns: [])
             if tab.errorText != nil { return }

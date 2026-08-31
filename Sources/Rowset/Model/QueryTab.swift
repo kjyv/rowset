@@ -48,6 +48,11 @@ final class QueryTab: Identifiable {
     /// How many rows the filter matches. It stays `nil` until a count runs.
     var totalRows: Int?
     var isCounting = false
+    /// The statement the page on screen belongs to.
+    ///
+    /// A console shows the widget only while a result stands on a statement it could page. When
+    /// you change the statement, the page and the count start again.
+    var pagedStatement: String?
 
     /// The rows this page shows, as `12-36`, or `0` for an empty page.
     var pageRange: String {
@@ -79,6 +84,15 @@ final class QueryTab: Identifiable {
         return !hasMoreRows
     }
 
+    /// True when the widget belongs on screen.
+    var showsPageBar: Bool {
+        guard result != nil else { return false }
+        switch kind {
+        case .table: return true
+        case .sql: return pagedStatement != nil
+        }
+    }
+
     /// Puts the paging back to the first page and forgets the count.
     ///
     /// A new filter or a new sort makes both wrong, so neither may be carried over.
@@ -86,6 +100,7 @@ final class QueryTab: Identifiable {
         pageOffset = 0
         hasMoreRows = false
         totalRows = nil
+        pagedStatement = nil
     }
 
     /// SQL tab state.
@@ -104,7 +119,6 @@ final class QueryTab: Identifiable {
     }
 
     /// Shared state.
-    var rowLimitText: String
     /// The block of cells you picked. Its focus is the cell the value pane shows.
     var selection: CellSelection?
 
@@ -177,7 +191,6 @@ final class QueryTab: Identifiable {
         self.kind = kind
         self.connectionName = connectionName
         self.rowLimit = rowLimit
-        self.rowLimitText = String(rowLimit)
     }
 
     /// The column names of this table. The filter field completes against these.

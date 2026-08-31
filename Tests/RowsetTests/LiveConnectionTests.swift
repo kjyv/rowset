@@ -285,6 +285,50 @@ final class LiveConnectionTests: XCTestCase {
         XCTAssertEqual(filtered.first?.first, "4", "the count keeps the filter")
     }
 
+    /// A console pages a statement by wrapping it, so the wrapper must give the same rows.
+    func testAWrappedStatementPagesTheSameRows() async throws {
+        let bookmark = try liveBookmark()
+        let session = PostgresSession(bookmark: bookmark)
+        try await session.connect()
+        defer { Task { await session.close() } }
+
+        let statement = "SELECT generate_series(1, 12) AS n ORDER BY n"
+
+        var seen: [String] = []
+        var offset = 0
+        while offset < 40 {
+            let sql = SQLBuilder.page(statement, limit: 6, offset: offset)
+            let rows = try await session.queryStrings(sql)
+            let hasMore = rows.count > 5
+            seen.append(contentsOf: rows.prefix(5).map { $0[0] })
+            guard hasMore else { break }
+            offset += 5
+        }
+
+        XCTAssertEqual(seen, (1...12).map(String.init), "every row once, in order")
+
+        let count = try await session.queryStrings(SQLBuilder.countOf(statement))
+        XCTAssertEqual(count.first?.first, "12", "the count wraps the same statement")
+    }
+
+    /// A CTE and a VALUES list must survive the wrapper as well.
+    func testTheWrapperTakesOtherReadingStatements() async throws {
+        let bookmark = try liveBookmark()
+        let session = PostgresSession(bookmark: bookmark)
+        try await session.connect()
+        defer { Task { await session.close() } }
+
+        let cte = "WITH x AS (SELECT 1 AS a UNION SELECT 2) SELECT * FROM x ORDER BY a"
+        let fromCTE = try await session.queryStrings(
+            SQLBuilder.page(cte, limit: 10, offset: 0))
+        XCTAssertEqual(fromCTE.map { $0[0] }, ["1", "2"])
+
+        let values = "VALUES (1), (2), (3)"
+        let fromValues = try await session.queryStrings(
+            SQLBuilder.page(values, limit: 2, offset: 1))
+        XCTAssertEqual(fromValues.count, 2, "an offset of one leaves two of three")
+    }
+
     func testAWrongStatementKeepsTheConnectionOpen() async throws {
         let bookmark = try liveBookmark()
         let session = PostgresSession(bookmark: bookmark)

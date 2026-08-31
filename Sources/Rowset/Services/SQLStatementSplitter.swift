@@ -80,6 +80,16 @@ enum SQLStatementSplitter {
         return gap.filter(\.isNewline).count >= 2
     }
 
+    /// True when a statement gives back rows that another SELECT may page over.
+    ///
+    /// Only a statement that reads can be wrapped. An INSERT, a CREATE or an EXPLAIN would not
+    /// survive it, so those run as they are and show no page widget.
+    static func isPageable(_ statement: String) -> Bool {
+        let first = SQLLexer.tokens(in: statement).first { $0.kind != .comment }
+        guard let first, first.kind == .keyword else { return false }
+        return ["select", "with", "table", "values"].contains(first.text.lowercased())
+    }
+
     /// The statement the caret sits in.
     ///
     /// A caret in the white space between two statements belongs to the one before it, which is

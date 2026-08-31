@@ -139,6 +139,34 @@ enum SQLBuilder {
         return sql
     }
 
+    /// The name the page wrapper gives the statement it wraps.
+    ///
+    /// A subquery in a FROM needs a name, and this one is unlikely to clash with a real table.
+    static let pageAlias = "_rowset_page"
+
+    /// Wraps a statement so a page of its rows comes back.
+    ///
+    /// Only a statement that reads may be wrapped, see `SQLStatementSplitter.isPageable`.
+    static func page(_ statement: String, limit: Int, offset: Int) -> String {
+        var sql = """
+            SELECT * FROM (
+            \(statement)
+            ) AS \(pageAlias)
+            LIMIT \(max(1, limit))
+            """
+        if offset > 0 { sql += "\nOFFSET \(offset)" }
+        return sql
+    }
+
+    /// Counts the rows a statement gives back.
+    static func countOf(_ statement: String) -> String {
+        """
+        SELECT count(*) FROM (
+        \(statement)
+        ) AS \(pageAlias)
+        """
+    }
+
     /// Counts the rows a filter matches, for the page widget.
     static func countRows(schema: String, table: String, filter: String) -> String {
         var sql = "SELECT count(*) FROM \(qualifiedName(schema: schema, table: table))"

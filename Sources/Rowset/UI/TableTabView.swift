@@ -76,15 +76,6 @@ struct TableTabView: View {
 
             Divider().frame(height: 16)
 
-            Text("Rows")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize()
-            TextField("", text: $tab.rowLimitText)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 60)
-                .onSubmit { applyLimit() }
-
             consoleButton
             InspectorToggle(model: model)
         }
@@ -111,14 +102,6 @@ struct TableTabView: View {
         Task { await model.reloadTable(tab) }
     }
 
-    private func applyLimit() {
-        guard let value = Int(tab.rowLimitText), value > 0 else {
-            tab.rowLimitText = String(tab.rowLimit)
-            return
-        }
-        tab.rowLimit = value
-        Task { await model.reloadTable(tab) }
-    }
 
     /// The bar that appears once you change a cell.
     private var editBar: some View {
@@ -167,8 +150,10 @@ struct TableTabView: View {
                     model: model, tab: tab, result: result, editable: tab.isEditable,
                     onSortChange: sortChanged)
                     .overlay(alignment: .bottom) {
-                        PageBar(model: model, tab: tab)
-                            .padding(.bottom, 14)
+                        if tab.showsPageBar {
+                            PageBar(model: model, tab: tab)
+                                .padding(.bottom, 14)
+                        }
                     }
             }
         } else {
