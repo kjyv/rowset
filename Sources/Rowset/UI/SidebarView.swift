@@ -4,6 +4,8 @@ import SwiftUI
 struct SidebarView: View {
     @Bindable var model: AppModel
 
+    @FocusState private var isFilterFocused: Bool
+
     var body: some View {
         VStack(spacing: 0) {
             List(selection: $model.sidebarSelection) {
@@ -33,6 +35,9 @@ struct SidebarView: View {
             } primaryAction: { rows in
                 model.openSidebarSelection(rows.first)
             }
+            // Command-F belongs to the sidebar only while the keyboard is in it. Every editor in
+            // the window uses that key for its own find bar.
+            .background(SidebarFindKey { isFilterFocused = true })
 
             Divider()
             toolbar
@@ -126,6 +131,7 @@ struct SidebarView: View {
             TextField("Filter tables", text: $model.sidebarFilter)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12))
+                .focused($isFilterFocused)
 
             if !model.sidebarFilter.isEmpty {
                 Button {

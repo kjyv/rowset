@@ -140,6 +140,9 @@ The button beside **Run All** opens the list of saved consoles of this connectio
 switch to it, or start a new one, or drop the one you are in. Each connection keeps its own list,
 so the consoles of one database never appear under another.
 
+The menu also drops every console but the one in front, for a connection that has collected too
+many.
+
 A console takes its name from its first line, with the comment marker left off. There is no
 rename, because the name follows the text while you type. A new console starts like this, and
 shows up in the list as **batch**:
@@ -165,6 +168,9 @@ showed them. Deleting a connection deletes its consoles with it.
 
 The statement the caret is in carries a light band, so you always see what Command-Return will
 send.
+
+While the keyboard is in the sidebar, **Command-F** puts it in the filter field. Every editor
+keeps that key for its own find bar, so the sidebar takes it only while you are in the sidebar.
 
 **A semicolon is never needed.** Two things end a statement: a semicolon, and an empty line.
 Write this and both run on their own:

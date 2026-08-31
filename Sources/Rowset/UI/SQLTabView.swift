@@ -148,6 +148,11 @@ struct SQLTabView: View {
 
             Button("Delete This Console", role: .destructive) { model.deleteBuffer(tab) }
                 .disabled(tab.bufferID == nil)
+
+            Button("Delete All Other Consoles", role: .destructive) {
+                model.deleteOtherBuffers(tab)
+            }
+            .disabled(buffers.count < 2)
         } label: {
             Label(currentBufferTitle, systemImage: "list.bullet.rectangle")
         }

@@ -21,7 +21,7 @@ struct ResultTableView: NSViewRepresentable {
     /// The tab that owns the edits. `nil` means the grid is read only.
     var editing: QueryTab?
 
-    static let rowHeight: CGFloat = 20
+    static let rowHeight: CGFloat = 22
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -510,6 +510,12 @@ struct ResultTableView: NSViewRepresentable {
             }
             if parent.result.columns.indices.contains(column) {
                 let name = parent.result.columns[column].name
+
+                add(menu, "Sort Ascending") { self.sort(by: name, ascending: true) }
+                add(menu, "Sort Descending") { self.sort(by: name, ascending: false) }
+                add(menu, "Order of the Database") { self.clearSort() }
+                menu.addItem(.separator())
+
                 add(menu, "Copy Column Name “\(name)”") { Clipboard.write(name) }
             }
             let allNames = parent.result.headerLine
@@ -542,6 +548,20 @@ struct ResultTableView: NSViewRepresentable {
             }
             menu.addItem(.separator())
             add(menu, "Select All") { self.selectAll() }
+        }
+
+        /// Sorts on one column, the way a click on its header does.
+        private func sort(by column: String, ascending: Bool) {
+            parent.sortOrder = [
+                ColumnComparator(columnName: column, order: ascending ? .forward : .reverse)
+            ]
+            parent.onSortChange()
+        }
+
+        /// Drops the sort, so the rows come back in the order the database gives them.
+        private func clearSort() {
+            parent.sortOrder = []
+            parent.onSortChange()
         }
 
         /// Picks every cell of the result.
@@ -596,7 +616,11 @@ final class GridRowView: NSTableRowView {
     weak var owner: ResultTableView.Coordinator?
     var rowIndex = -1
 
-    private static let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+    /// The font of the grid.
+    ///
+    /// The system font reads better than a monospaced one for names and sentences. The digits
+    /// keep one width, so a column of numbers still lines up.
+    private static let font = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .regular)
 
     private static let italicFont: NSFont = {
         let descriptor = font.fontDescriptor.withSymbolicTraits(.italic)

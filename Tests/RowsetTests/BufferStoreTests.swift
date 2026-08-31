@@ -143,6 +143,21 @@ final class BufferStoreTests: XCTestCase {
         XCTAssertNil(store.buffer(id: buffer.id, for: connection))
     }
 
+    func testDeletingEveryOtherConsoleKeepsTheOneInFront() {
+        let store = store()
+        let connection = UUID()
+        let keep = store.create(for: connection, text: "keep me")
+        store.create(for: connection, text: "one")
+        store.create(for: connection, text: "two")
+        XCTAssertEqual(store.buffers(for: connection).count, 3)
+
+        for buffer in store.buffers(for: connection) where buffer.id != keep.id {
+            store.delete(id: buffer.id, for: connection)
+        }
+
+        XCTAssertEqual(store.buffers(for: connection).map(\.id), [keep.id])
+    }
+
     func testDroppingAConnectionDropsItsConsoles() {
         let store = store()
         let connection = UUID()

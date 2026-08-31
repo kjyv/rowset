@@ -62,6 +62,15 @@ extension AppModel {
         saveSession()
     }
 
+    /// Throws away every console of this connection but the one in front.
+    func deleteOtherBuffers(_ tab: QueryTab) {
+        guard let keep = tab.bufferID else { return }
+        for buffer in bufferStore.buffers(for: tab.connectionID) where buffer.id != keep {
+            bufferStore.delete(id: buffer.id, for: tab.connectionID)
+        }
+        saveSession()
+    }
+
     /// The console a new tab opens: the one you touched last, or a fresh one.
     func adoptBuffer(_ tab: QueryTab, connection: ConnectionModel, preferred: UUID? = nil) {
         if let preferred, let buffer = bufferStore.buffer(id: preferred, for: connection.id) {
