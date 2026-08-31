@@ -78,17 +78,20 @@ extension AppModel {
               let connection = connections[tab.connectionID]
         else { return }
 
-        tab.isRunning = true
+        pendingWrite = nil
         tab.errorText = nil
-        defer { tab.isRunning = false }
+        tab.isRunning = true
 
         do {
             try await connection.runTransaction(write.statements)
+            // The flag has to fall before the refresh. `runTableQuery` starts with
+            // `guard !tab.isRunning`, so a refresh asked for while it is still set does nothing
+            // at all, and the table kept showing the old rows until you pressed refresh.
+            tab.isRunning = false
             tab.discardEdits()
-            pendingWrite = nil
             await runTableQuery(tab)
         } catch {
-            pendingWrite = nil
+            tab.isRunning = false
             tab.errorText = DatabaseErrorText.describe(error)
         }
     }
