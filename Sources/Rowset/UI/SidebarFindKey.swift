@@ -73,24 +73,38 @@ struct SidebarFindKey: NSViewRepresentable {
             monitor = nil
         }
 
-        /// True when the first responder sits inside the sidebar.
+        /// True when the first responder sits in the sidebar list.
+        ///
+        /// A selected row makes the list itself the first responder, so the check is against that
+        /// table and its subtree.
         private static func keyboardIsInSidebar(of window: NSWindow, near probe: NSView) -> Bool {
             guard let responder = window.firstResponder as? NSView,
-                  let sidebar = sidebarRoot(of: probe)
+                  let table = sidebarTable(near: probe)
             else { return false }
-            return responder === sidebar || responder.isDescendant(of: sidebar)
+            return responder === table || responder.isDescendant(of: table)
         }
 
-        /// The view that holds the whole sidebar, taken from the probe that lives in it.
-        private static func sidebarRoot(of probe: NSView) -> NSView? {
-            var view: NSView? = probe.superview
+        /// The table that draws the sidebar.
+        ///
+        /// The result grid is an `NSTableView` as well, but it draws a header and a sidebar list
+        /// does not. That tells the two apart.
+        private static func sidebarTable(near probe: NSView) -> NSTableView? {
+            var ancestor: NSView? = probe.superview
             var level = 0
-            while let current = view, level < 6 {
-                if current.subviews.contains(where: { $0 is NSScrollView }) { return current }
-                view = current.superview
+            while let current = ancestor, level < 10 {
+                if let table = firstHeaderlessTable(in: current) { return table }
+                ancestor = current.superview
                 level += 1
             }
-            return probe.superview
+            return nil
+        }
+
+        private static func firstHeaderlessTable(in view: NSView) -> NSTableView? {
+            if let table = view as? NSTableView, table.headerView == nil { return table }
+            for subview in view.subviews {
+                if let found = firstHeaderlessTable(in: subview) { return found }
+            }
+            return nil
         }
     }
 }

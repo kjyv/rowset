@@ -76,6 +76,9 @@ enum CellRenderer {
         case .text, .varchar, .bpchar, .name, .char, .json, .jsonb, .xml, .unknown:
             return try? cell.decode(String.self)
 
+        case .bool where cell.bytes?.readableBytes == 1:
+            return (try? cell.decode(Bool.self)).map { $0 ? "true" : "false" }
+
         case .bytea:
             return cell.bytes.map(hexDump)
 
@@ -103,35 +106,62 @@ enum CellRenderer {
         }
     }
 
-    /// Formats the array types that appear most often. Matches the Postgres output style `{a,b}`.
+    /// Reads any array, whatever it holds.
+    ///
+    /// Postgres sends every array the same way: a header, then each element with its own byte
+    /// count. Reading that once covers every element type, including the ones PostgresNIO has no
+    /// decoder for, such as an array of timestamps.
+    ///
+    /// The parse must end exactly at the end of the buffer. A type that is no array would leave
+    /// bytes over or run out of them, and that is what keeps this from claiming one.
     private static func renderArray(_ cell: PostgresCell) -> String? {
-        switch cell.dataType {
-        case .textArray, .varcharArray, .nameArray, .bpcharArray:
-            return (try? cell.decode([String].self)).map { join($0.map(quoteArrayElement)) }
-        case .int2Array:
-            return (try? cell.decode([Int16].self)).map { join($0.map(String.init)) }
-        case .int4Array:
-            return (try? cell.decode([Int32].self)).map { join($0.map(String.init)) }
-        case .int8Array:
-            return (try? cell.decode([Int64].self)).map { join($0.map(String.init)) }
-        case .float4Array:
-            return (try? cell.decode([Float].self)).map { join($0.map { String($0) }) }
-        case .float8Array:
-            return (try? cell.decode([Double].self)).map { join($0.map { String($0) }) }
-        case .boolArray:
-            return (try? cell.decode([Bool].self)).map { join($0.map { $0 ? "true" : "false" }) }
-        case .uuidArray:
-            return (try? cell.decode([UUID].self)).map { join($0.map(\.uuidString)) }
-        default:
-            return nil
+        guard var buffer = cell.bytes,
+              let dimensions = buffer.readInteger(as: Int32.self),
+              buffer.readInteger(as: Int32.self) != nil,          // the has-null flag
+              let elementOID = buffer.readInteger(as: UInt32.self),
+              (0...6).contains(dimensions), elementOID != 0
+        else { return nil }
+
+        if dimensions == 0 { return buffer.readableBytes == 0 ? "{}" : nil }
+
+        var total = 1
+        for _ in 0..<dimensions {
+            guard let length = buffer.readInteger(as: Int32.self),
+                  buffer.readInteger(as: Int32.self) != nil,      // the lower bound
+                  length >= 0
+            else { return nil }
+            total *= Int(length)
         }
+        guard total >= 0, total < 1_000_000 else { return nil }
+
+        let elementType = PostgresDataType(elementOID)
+        var parts: [String] = []
+        parts.reserveCapacity(total)
+
+        for _ in 0..<total {
+            guard let size = buffer.readInteger(as: Int32.self) else { return nil }
+            if size < 0 {
+                parts.append("NULL")
+                continue
+            }
+            guard let slice = buffer.readSlice(length: Int(size)) else { return nil }
+            let element = PostgresCell(
+                bytes: slice, dataType: elementType, format: .binary,
+                columnName: "", columnIndex: 0)
+            parts.append(quoteArrayElement(renderBinary(element) ?? hexDump(slice)))
+        }
+
+        guard buffer.readableBytes == 0 else { return nil }
+        return join(parts)
     }
 
     private static func join(_ parts: [String]) -> String {
         "{" + parts.joined(separator: ",") + "}"
     }
 
+    /// Puts an element in quotes when Postgres would, so the text reads back as it was written.
     private static func quoteArrayElement(_ value: String) -> String {
+        if value == "NULL" { return value }
         let needsQuotes = value.isEmpty
             || value.contains(where: { ",{}\" \\".contains($0) })
         guard needsQuotes else { return value }

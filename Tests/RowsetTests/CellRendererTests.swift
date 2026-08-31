@@ -117,6 +117,75 @@ final class CellRendererTests: XCTestCase {
         XCTAssertEqual(CellRenderer.render(cell(bytes, .textArray)).text, "{a,\"b c\"}")
     }
 
+    /// Postgres sends every array the same way, so one reader covers every element type.
+    func testAnArrayOfTimestampsReadsAsTimestamps() {
+        // 2022-09-02 14:36:20.896927 UTC and one second later.
+        let first: Int64 = 715_444_580_896_927
+        let second = first + 1_000_000
+
+        let bytes = buffer { value in
+            value.writeInteger(Int32(1))                                    // one dimension
+            value.writeInteger(Int32(0))                                    // no null inside
+            value.writeInteger(UInt32(PostgresDataType.timestamp.rawValue))
+            value.writeInteger(Int32(2))                                    // two elements
+            value.writeInteger(Int32(1))                                    // lower bound
+            value.writeInteger(Int32(8))
+            value.writeInteger(first)
+            value.writeInteger(Int32(8))
+            value.writeInteger(second)
+        }
+
+        XCTAssertEqual(
+            CellRenderer.render(cell(bytes, .timestampArray)).text,
+            "{\"2022-09-02 14:36:20.896927\",\"2022-09-02 14:36:21.896927\"}")
+    }
+
+    func testAnArrayOfSmallIntegers() {
+        let bytes = buffer { value in
+            value.writeInteger(Int32(1))
+            value.writeInteger(Int32(0))
+            value.writeInteger(UInt32(PostgresDataType.int2.rawValue))
+            value.writeInteger(Int32(3))
+            value.writeInteger(Int32(1))
+            for element in [Int16(7), 8, 9] {
+                value.writeInteger(Int32(2))
+                value.writeInteger(element)
+            }
+        }
+        XCTAssertEqual(CellRenderer.render(cell(bytes, .int2Array)).text, "{7,8,9}")
+    }
+
+    func testANullInsideAnArray() {
+        let bytes = buffer { value in
+            value.writeInteger(Int32(1))
+            value.writeInteger(Int32(1))
+            value.writeInteger(UInt32(PostgresDataType.int4.rawValue))
+            value.writeInteger(Int32(2))
+            value.writeInteger(Int32(1))
+            value.writeInteger(Int32(4))
+            value.writeInteger(Int32(5))
+            value.writeInteger(Int32(-1))
+        }
+        XCTAssertEqual(CellRenderer.render(cell(bytes, .int4Array)).text, "{5,NULL}")
+    }
+
+    func testAnEmptyArray() {
+        let bytes = buffer { value in
+            value.writeInteger(Int32(0))
+            value.writeInteger(Int32(0))
+            value.writeInteger(UInt32(PostgresDataType.int4.rawValue))
+        }
+        XCTAssertEqual(CellRenderer.render(cell(bytes, .int4Array)).text, "{}")
+    }
+
+    /// The reader must not claim a type that is no array. It ends at the end of the buffer or it
+    /// gives up.
+    func testTheArrayReaderRefusesOtherTypes() {
+        let bytes = buffer { $0.writeBytes([0x01, 0x02]) }
+        let value = CellRenderer.render(cell(bytes, .point))
+        XCTAssertTrue(value.isRaw, "a point is not read as an array")
+    }
+
     func testUnknownBinaryTypeFallsBackToAHexDump() {
         let bytes = buffer { $0.writeBytes([0x01, 0x02]) }
         let value = CellRenderer.render(cell(bytes, .point))

@@ -30,11 +30,11 @@ struct TableTabView: View {
     private var filterBar: some View {
         HStack(spacing: 8) {
             Button {
-                Task { await model.runTableQuery(tab) }
+                Task { await model.refreshTable(tab) }
             } label: {
                 Image(systemName: "arrow.clockwise")
             }
-            .help("Run the query again")
+            .help("Fetch this page again")
             .disabled(tab.isRunning)
 
             Text("WHERE")
@@ -60,13 +60,13 @@ struct TableTabView: View {
                 placeholder: tab.orderByPlaceholder,
                 completions: tab.completionNames,
                 keywords: SQLKeywords.orderBy,
-                onSubmit: { Task { await model.reloadTable(tab) } })
+                onSubmit: { Task { await model.resortTable(tab) } })
                 .frame(minWidth: 120, maxWidth: 240)
 
             if !tab.orderByText.isEmpty {
                 Button {
                     tab.orderByText = ""
-                    Task { await model.reloadTable(tab) }
+                    Task { await model.resortTable(tab) }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                 }
@@ -97,9 +97,10 @@ struct TableTabView: View {
 
     /// A header click already wrote the new ORDER BY, so the rows are fetched again.
     ///
-    /// A new sort puts the rows in another order, so the page you were on means nothing any more.
+    /// The page stays where it was. A new sort orders the same rows, so neither the page nor the
+    /// count it counted is wrong.
     private func sortChanged() {
-        Task { await model.reloadTable(tab) }
+        Task { await model.resortTable(tab) }
     }
 
 

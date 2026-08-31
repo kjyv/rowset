@@ -316,7 +316,10 @@ client pools connections and holds one fixed password. An IAM token expires afte
 a pooled connection that opens later would carry a dead token.
 
 **The app decodes every column type itself.** Postgres sends most values in a binary format.
-`CellRenderer` turns each type into text. It decodes the date and time types by hand, because a
+`CellRenderer` turns each type into text. An array is read from its own binary layout rather than
+type by type, so an array of timestamps reads as timestamps even though the driver has no decoder
+for one. The parse has to end exactly at the end of the buffer, which is what stops it claiming a
+type that is no array. It decodes the date and time types by hand, because a
 `Date` loses part of the microsecond precision that Postgres sends.
 
 **Sorting happens on the server.** A click on a column header changes the `ORDER BY` and runs the

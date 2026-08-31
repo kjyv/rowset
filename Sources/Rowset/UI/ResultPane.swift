@@ -27,7 +27,8 @@ struct ResultPane: View {
                     ValueInspectorView(
                         column: tab.selectedColumn,
                         value: tab.selectedValue,
-                        onClose: { model.isInspectorVisible = false })
+                        onClose: { model.isInspectorVisible = false },
+                        editing: inspectorTarget)
                         .frame(height: paneHeight(in: geometry.size.height))
                 }
             }

@@ -42,13 +42,6 @@ struct PageBar: View {
         }
     }
 
-    private func reload() async {
-        switch tab.kind {
-        case .table: await model.reloadTable(tab)
-        case .sql: await model.goToStatementPage(offset: 0, in: tab)
-        }
-    }
-
     var body: some View {
         HStack(spacing: 2) {
             step(
@@ -116,8 +109,7 @@ struct PageBar: View {
         Menu {
             ForEach(Self.pageSizes, id: \.self) { size in
                 Button {
-                    tab.rowLimit = size
-                    Task { await reload() }
+                    Task { await model.changePageSize(to: size, in: tab) }
                 } label: {
                     if size == tab.rowLimit {
                         Label("\(size) rows a page", systemImage: "checkmark")

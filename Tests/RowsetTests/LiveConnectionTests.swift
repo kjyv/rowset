@@ -329,6 +329,41 @@ final class LiveConnectionTests: XCTestCase {
         XCTAssertEqual(fromValues.count, 2, "an offset of one leaves two of three")
     }
 
+    /// Reads every array type the app is likely to meet, from the server itself.
+    func testArraysComeBackAsLists() async throws {
+        let bookmark = try liveBookmark()
+        let session = PostgresSession(bookmark: bookmark)
+        try await session.connect()
+        defer { Task { await session.close() } }
+
+        let result = try await session.query(
+            """
+            SELECT ARRAY[1, 2, 3]::smallint[],
+                   ARRAY['2022-09-02 14:36:20.896927+00',
+                         '2022-09-03 14:36:20.896927+00']::timestamptz[],
+                   ARRAY['a', 'b c']::text[],
+                   ARRAY[1, NULL]::integer[],
+                   '{}'::integer[],
+                   '{"a": 1}'::jsonb
+            """,
+            maxRows: 1)
+
+        let row = try XCTUnwrap(result.rows.first)
+        XCTAssertEqual(row.values[0].text, "{1,2,3}")
+
+        let timestamps = row.values[1].text
+        XCTAssertTrue(timestamps.hasPrefix("{"), "a list and not a byte dump: \(timestamps)")
+        XCTAssertTrue(timestamps.contains("2022-09-02"), timestamps)
+        XCTAssertTrue(timestamps.contains("2022-09-03"), timestamps)
+        XCTAssertFalse(timestamps.hasPrefix("\\x"), "it must not fall back to hex")
+
+        XCTAssertEqual(row.values[2].text, "{a,\"b c\"}")
+        XCTAssertEqual(row.values[3].text, "{1,NULL}")
+        XCTAssertEqual(row.values[4].text, "{}")
+        XCTAssertEqual(row.values[5].text, "{\"a\": 1}")
+        XCTAssertFalse(row.values[5].isRaw, "jsonb reads as text, so it can be edited")
+    }
+
     func testAWrongStatementKeepsTheConnectionOpen() async throws {
         let bookmark = try liveBookmark()
         let session = PostgresSession(bookmark: bookmark)

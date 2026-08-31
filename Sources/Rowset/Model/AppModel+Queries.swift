@@ -46,10 +46,47 @@ extension AppModel {
         saveSession()
     }
 
-    /// Runs the query again from the first page. A new filter or sort makes the count wrong.
+    /// Runs the query again from the first page, and forgets the count.
+    ///
+    /// Only a new filter asks for this. It changes which rows there are, so the page you were on
+    /// holds other rows and the count is wrong.
     func reloadTable(_ tab: QueryTab) async {
         tab.resetPaging()
         await runTableQuery(tab)
+    }
+
+    /// Fetches the same page again and forgets the count.
+    ///
+    /// The rows may have changed under you, so the count has to go. The page stays, because you
+    /// asked to see this page again.
+    func refreshTable(_ tab: QueryTab) async {
+        tab.totalRows = nil
+        await runTableQuery(tab)
+    }
+
+    /// Runs the query again on the same page, keeping the count.
+    ///
+    /// A new sort orders the same rows, so neither the page nor the count is wrong.
+    func resortTable(_ tab: QueryTab) async {
+        await runTableQuery(tab)
+    }
+
+    /// Changes how many rows fit on a page and stays near where you were.
+    ///
+    /// The count still holds, because the rows are the same. The offset moves to the start of the
+    /// page that now holds the row you were looking at.
+    func changePageSize(to size: Int, in tab: QueryTab) async {
+        guard size > 0 else { return }
+        let firstRow = tab.pageOffset
+        tab.rowLimit = size
+        tab.pageOffset = (firstRow / size) * size
+
+        switch tab.kind {
+        case .table:
+            await runTableQuery(tab)
+        case .sql:
+            await goToStatementPage(offset: tab.pageOffset, in: tab)
+        }
     }
 
     /// Moves to another page of the same query.
