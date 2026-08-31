@@ -142,6 +142,17 @@ final class ConnectionModel: Identifiable {
         }
     }
 
+    /// Finds a tree row by its id, anywhere in the tree.
+    func node(id: UUID) -> TreeNode? {
+        var queue = schemas
+        while !queue.isEmpty {
+            let node = queue.removeFirst()
+            if node.id == id { return node }
+            queue.append(contentsOf: node.children ?? [])
+        }
+        return nil
+    }
+
     // MARK: - Filter
 
     /// Reads every table of the database once. The sidebar filter needs the whole list, and the

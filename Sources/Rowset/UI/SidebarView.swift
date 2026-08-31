@@ -22,6 +22,10 @@ struct SidebarView: View {
             // identity SwiftUI reuses the rows, and a connection row stayed drawn over the first
             // result.
             .id(model.sidebarFilter.isEmpty)
+            .onKeyPress(.return) {
+                model.openSidebarSelection()
+                return .handled
+            }
 
             Divider()
             toolbar
@@ -61,6 +65,8 @@ struct SidebarView: View {
                     } else {
                         ForEach(matches) { table in
                             FilterResultRow(model: model, connection: connection, table: table)
+                                .tag(SidebarSelection.filterResult(
+                                    id: table.id, bookmarkID: connection.id))
                         }
                     }
                 }
@@ -294,8 +300,11 @@ struct TreeNodeRow: View {
                 ProgressView().controlSize(.small)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { open() }
+        // A simultaneous gesture leaves the single click to the list, which is what selects the
+        // row. A plain onTapGesture took the whole row and left only a thin band to click.
+        .simultaneousGesture(TapGesture(count: 2).onEnded { open() })
         .contextMenu {
             if node.kind.isTableLike {
                 Button("Open") { open() }
@@ -317,23 +326,7 @@ struct TreeNodeRow: View {
     }
 
     private func open() {
-        switch node.kind {
-        case .table(let schema, let name), .view(let schema, let name):
-            let tab = model.openTable(schema: schema, name: name, connection: connection)
-            Task { await model.runTableQuery(tab) }
-
-        case .column(let schema, let table, let name, _, _):
-            // Opens the table, or moves to the tab that already shows it, then jumps sideways
-            // to the column you picked.
-            let tab = model.openTable(schema: schema, name: table, connection: connection)
-            tab.revealColumn = name
-            if tab.result == nil {
-                Task { await model.runTableQuery(tab) }
-            }
-
-        case .schema:
-            node.isExpanded.toggle()
-        }
+        model.open(node, in: connection)
     }
 }
 
@@ -358,8 +351,9 @@ struct FilterResultRow: View {
                 .lineLimit(1)
             Spacer(minLength: 2)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { open() }
+        .simultaneousGesture(TapGesture(count: 2).onEnded { open() })
         .contextMenu {
             Button("Open") { open() }
             Button("Copy Name") {
@@ -370,8 +364,6 @@ struct FilterResultRow: View {
     }
 
     private func open() {
-        let tab = model.openTable(
-            schema: table.schema, name: table.name, connection: connection)
-        Task { await model.runTableQuery(tab) }
+        model.open(table, in: connection)
     }
 }

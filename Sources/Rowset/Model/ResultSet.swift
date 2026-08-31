@@ -88,6 +88,39 @@ struct CellAddress: Hashable, Sendable {
     var columnID: Int
 }
 
+/// A rectangle of cells.
+///
+/// The anchor is where the drag started and the focus is where it is now. A shift click moves the
+/// focus and leaves the anchor, which is how a block grows.
+struct CellSelection: Hashable, Sendable {
+    var anchor: CellAddress
+    var focus: CellAddress
+
+    init(anchor: CellAddress, focus: CellAddress) {
+        self.anchor = anchor
+        self.focus = focus
+    }
+
+    init(single cell: CellAddress) {
+        self.init(anchor: cell, focus: cell)
+    }
+
+    var rows: ClosedRange<Int> {
+        min(anchor.rowID, focus.rowID)...max(anchor.rowID, focus.rowID)
+    }
+
+    var columns: ClosedRange<Int> {
+        min(anchor.columnID, focus.columnID)...max(anchor.columnID, focus.columnID)
+    }
+
+    var cellCount: Int { rows.count * columns.count }
+    var isSingleCell: Bool { cellCount == 1 }
+
+    func contains(row: Int, column: Int) -> Bool {
+        rows.contains(row) && columns.contains(column)
+    }
+}
+
 /// The result of one statement.
 struct ResultSet: Sendable, Identifiable {
     /// Names this run. The grid reloads only when the id changes, not on every cell click.
@@ -127,6 +160,25 @@ struct ResultSet: Sendable, Identifiable {
     /// The column names, separated by tabs.
     var headerLine: String {
         columns.map(\.name).joined(separator: "\t")
+    }
+
+    /// The cells of a selection as plain text, NULL as an empty field.
+    func block(_ selection: CellSelection, includeHeader: Bool) -> [[String]] {
+        let columnRange = selection.columns.clamped(to: 0...max(0, columns.count - 1))
+        guard !columns.isEmpty else { return [] }
+
+        var block: [[String]] = []
+        if includeHeader {
+            block.append(columnRange.map { columns[$0].name })
+        }
+        for rowID in selection.rows {
+            guard let row = row(id: rowID) else { continue }
+            block.append(columnRange.map { index in
+                let value = row.value(at: index)
+                return value.isNull ? "" : value.text
+            })
+        }
+        return block
     }
 
     /// One row, separated by tabs. A NULL becomes an empty field.

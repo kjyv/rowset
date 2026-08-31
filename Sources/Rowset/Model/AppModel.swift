@@ -16,12 +16,14 @@ struct SSOPrompt: Identifiable {
 enum SidebarSelection: Hashable {
     case bookmark(UUID)
     case node(id: UUID, bookmarkID: UUID)
+    case filterResult(id: String, bookmarkID: UUID)
 
     /// The connection this row belongs to.
     var bookmarkID: UUID {
         switch self {
         case .bookmark(let id): id
         case .node(_, let bookmarkID): bookmarkID
+        case .filterResult(_, let bookmarkID): bookmarkID
         }
     }
 }
@@ -321,6 +323,61 @@ final class AppModel {
             return connection
         }
         return connectedConnections.first
+    }
+
+    /// Opens what a tree row stands for.
+    ///
+    /// A double click and the Return key both land here, so the two never drift apart.
+    func open(_ node: TreeNode, in connection: ConnectionModel) {
+        switch node.kind {
+        case .table(let schema, let name), .view(let schema, let name):
+            let tab = openTable(schema: schema, name: name, connection: connection)
+            Task { await runTableQuery(tab) }
+
+        case .column(let schema, let table, let name, _, _):
+            // Opens the table, or moves to the tab that already shows it, then jumps sideways
+            // to the column you picked.
+            let tab = openTable(schema: schema, name: table, connection: connection)
+            tab.revealColumn = name
+            if tab.result == nil {
+                Task { await runTableQuery(tab) }
+            }
+
+        case .schema:
+            node.isExpanded.toggle()
+        }
+    }
+
+    func open(_ table: TableRef, in connection: ConnectionModel) {
+        let tab = openTable(schema: table.schema, name: table.name, connection: connection)
+        Task { await runTableQuery(tab) }
+    }
+
+    /// Opens whatever the sidebar has selected. The Return key calls this.
+    func openSidebarSelection() {
+        switch sidebarSelection {
+        case .bookmark(let id):
+            guard let connection = connections[id] else { return }
+            connection.isExpanded.toggle()
+            if connection.isExpanded, connection.state == .disconnected {
+                Task { await connect(to: id) }
+            }
+
+        case .node(let nodeID, let bookmarkID):
+            guard let connection = connections[bookmarkID],
+                  let node = connection.node(id: nodeID)
+            else { return }
+            open(node, in: connection)
+
+        case .filterResult(let id, let bookmarkID):
+            guard let connection = connections[bookmarkID],
+                  let table = connection.allTables.first(where: { $0.id == id })
+            else { return }
+            open(table, in: connection)
+
+        case nil:
+            break
+        }
     }
 
     /// Copies a bookmark, so a second database on the same server costs a few keystrokes.

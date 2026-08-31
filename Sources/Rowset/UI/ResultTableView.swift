@@ -10,7 +10,7 @@ import SwiftUI
 struct ResultTableView: NSViewRepresentable {
     let result: ResultSet
     @Binding var sortOrder: [ColumnComparator]
-    @Binding var selectedCell: CellAddress?
+    @Binding var selection: CellSelection?
     /// A column to scroll to once. The grid clears it after the jump.
     @Binding var revealColumn: String?
     /// Runs when you double click a cell.
@@ -29,9 +29,15 @@ struct ResultTableView: NSViewRepresentable {
         let tableView = OverdrawTableView()
         tableView.dataSource = coordinator
         tableView.delegate = coordinator
-        tableView.target = coordinator
-        tableView.action = #selector(Coordinator.cellClicked)
-        tableView.doubleAction = #selector(Coordinator.cellDoubleClicked)
+        tableView.onCellMouseDown = { [weak coordinator] row, column, extend, clicks in
+            coordinator?.mouseDown(row: row, column: column, extend: extend, clickCount: clicks)
+        }
+        tableView.onCellDrag = { [weak coordinator] row, column in
+            coordinator?.dragged(row: row, column: column)
+        }
+        tableView.onCopy = { [weak coordinator] in
+            coordinator?.copySelection(format: .tsv, includeHeader: false)
+        }
 
         tableView.style = .fullWidth
         tableView.rowHeight = Self.rowHeight
@@ -85,7 +91,7 @@ struct ResultTableView: NSViewRepresentable {
 
         private var shownResultID: UUID?
         private var shownColumnNames: [String] = []
-        private var shownSelection: CellAddress?
+        private var shownSelection: CellSelection?
         /// Blocks the callback while the code writes the sort descriptors itself.
         private var isWritingSortDescriptors = false
 
@@ -101,7 +107,7 @@ struct ResultTableView: NSViewRepresentable {
             if names != shownColumnNames {
                 rebuildColumns()
                 shownResultID = parent.result.id
-                shownSelection = parent.selectedCell
+                shownSelection = parent.selection
                 tableView.reloadData()
                 syncSortDescriptors()
                 return
@@ -109,7 +115,7 @@ struct ResultTableView: NSViewRepresentable {
 
             if shownResultID != parent.result.id {
                 shownResultID = parent.result.id
-                shownSelection = parent.selectedCell
+                shownSelection = parent.selection
                 tableView.reloadData()
                 tableView.scrollRowToVisible(0)
                 syncSortDescriptors()
@@ -118,11 +124,11 @@ struct ResultTableView: NSViewRepresentable {
 
             revealRequestedColumn()
 
-            if shownSelection != parent.selectedCell {
+            if shownSelection != parent.selection {
                 let previous = shownSelection
-                shownSelection = parent.selectedCell
+                shownSelection = parent.selection
                 redraw(previous)
-                redraw(parent.selectedCell)
+                redraw(parent.selection)
             }
 
             syncSortDescriptors()
@@ -144,16 +150,16 @@ struct ResultTableView: NSViewRepresentable {
             // SwiftUI forbids a write while it draws, so the answer waits for the next turn.
             Task { @MainActor in
                 self.parent.revealColumn = nil
-                if let mark { self.parent.selectedCell = mark }
+                if let mark { self.parent.selection = CellSelection(single: mark) }
             }
         }
 
-        /// Repaints one row, so a click does not reload the whole grid.
-        private func redraw(_ address: CellAddress?) {
-            guard let tableView, let address,
-                  let row = parent.result.rows.firstIndex(where: { $0.id == address.rowID })
-            else { return }
-            tableView.rowView(atRow: row, makeIfNecessary: false)?.needsDisplay = true
+        /// Repaints the rows a selection covers, so a click does not reload the whole grid.
+        private func redraw(_ selection: CellSelection?) {
+            guard let tableView, let selection else { return }
+            for row in selection.rows where parent.result.rows.indices.contains(row) {
+                tableView.rowView(atRow: row, makeIfNecessary: false)?.needsDisplay = true
+            }
         }
 
         func rebuildColumns() {
@@ -198,14 +204,13 @@ struct ResultTableView: NSViewRepresentable {
         }
 
         /// What the row at `row` must draw. The row view asks for this while it draws.
-        func rowContent(_ row: Int) -> (values: [DisplayValue], selectedColumn: Int?)? {
+        func rowContent(_ row: Int) -> (values: [DisplayValue], selected: ClosedRange<Int>?)? {
             guard parent.result.rows.indices.contains(row) else { return nil }
             let resultRow = parent.result.rows[row]
 
-            var selected: Int?
-            if let address = parent.selectedCell, address.rowID == resultRow.id,
-               let index = parent.result.columns.firstIndex(where: { $0.id == address.columnID }) {
-                selected = index
+            var selected: ClosedRange<Int>?
+            if let selection = parent.selection, selection.rows.contains(resultRow.id) {
+                selected = selection.columns
             }
 
             let values = parent.result.columns.indices.map { resultRow.value(at: $0) }
@@ -214,26 +219,42 @@ struct ResultTableView: NSViewRepresentable {
 
         // MARK: Clicks
 
-        @objc func cellClicked() {
-            guard let tableView else { return }
-            select(row: tableView.clickedRow, column: tableView.clickedColumn)
+        func mouseDown(row: Int, column: Int, extend: Bool, clickCount: Int) {
+            guard let address = address(row: row, column: column) else { return }
+
+            if extend, let current = parent.selection {
+                parent.selection = CellSelection(anchor: current.anchor, focus: address)
+            } else {
+                parent.selection = CellSelection(single: address)
+            }
+
+            if clickCount >= 2 { parent.onOpenValue() }
         }
 
-        @objc func cellDoubleClicked() {
-            guard let tableView else { return }
-            guard select(row: tableView.clickedRow, column: tableView.clickedColumn) else { return }
-            parent.onOpenValue()
+        /// Grows the block while you drag. The anchor stays where the drag began.
+        func dragged(row: Int, column: Int) {
+            guard let address = address(row: row, column: column),
+                  let current = parent.selection,
+                  current.focus != address
+            else { return }
+            parent.selection = CellSelection(anchor: current.anchor, focus: address)
         }
 
-        @discardableResult
-        private func select(row: Int, column: Int) -> Bool {
+        private func address(row: Int, column: Int) -> CellAddress? {
             guard parent.result.rows.indices.contains(row),
                   parent.result.columns.indices.contains(column)
-            else { return false }
-            parent.selectedCell = CellAddress(
+            else { return nil }
+            return CellAddress(
                 rowID: parent.result.rows[row].id,
                 columnID: parent.result.columns[column].id)
-            return true
+        }
+
+        /// Puts the block on the clipboard.
+        func copySelection(format: ClipboardFormat, includeHeader: Bool) {
+            guard let selection = parent.selection else { return }
+            let block = parent.result.block(selection, includeHeader: includeHeader)
+            guard !block.isEmpty else { return }
+            Clipboard.write(ClipboardFormatter.text(block, format: format))
         }
 
         // MARK: Sorting
@@ -300,19 +321,40 @@ struct ResultTableView: NSViewRepresentable {
             guard let tableView else { return }
             let row = tableView.clickedRow
             let column = tableView.clickedColumn
-            guard parent.result.rows.indices.contains(row) else { return }
 
-            let resultRow = parent.result.rows[row]
-            let result = parent.result
+            // A right click outside the block moves the block onto that cell.
+            if let address = address(row: row, column: column),
+               parent.selection?.contains(row: address.rowID, column: address.columnID) != true {
+                parent.selection = CellSelection(single: address)
+            }
 
-            if parent.result.columns.indices.contains(column) {
-                let value = resultRow.value(at: column)
-                add(menu, "Copy Value") { Clipboard.write(value.isNull ? "" : value.text) }
+            guard let selection = parent.selection else { return }
+            let count = selection.cellCount
+            let what = selection.isSingleCell ? "Value" : "\(count) Cells"
+
+            add(menu, "Copy \(what)") { self.copySelection(format: .tsv, includeHeader: false) }
+            add(menu, "Copy with Header") {
+                self.copySelection(format: .tsv, includeHeader: true)
             }
-            add(menu, "Copy Row") { Clipboard.write(result.line(for: resultRow)) }
-            add(menu, "Copy Row with Header") {
-                Clipboard.write(result.headerLine + "\n" + result.line(for: resultRow))
+            menu.addItem(.separator())
+            add(menu, "Copy as CSV") { self.copySelection(format: .csv, includeHeader: false) }
+            add(menu, "Copy as CSV with Header") {
+                self.copySelection(format: .csv, includeHeader: true)
             }
+            menu.addItem(.separator())
+            add(menu, "Select All") { self.selectAll() }
+        }
+
+        /// Picks every cell of the result.
+        func selectAll() {
+            guard let firstRow = parent.result.rows.first,
+                  let lastRow = parent.result.rows.last,
+                  let firstColumn = parent.result.columns.first,
+                  let lastColumn = parent.result.columns.last
+            else { return }
+            parent.selection = CellSelection(
+                anchor: CellAddress(rowID: firstRow.id, columnID: firstColumn.id),
+                focus: CellAddress(rowID: lastRow.id, columnID: lastColumn.id))
         }
 
         private func add(_ menu: NSMenu, _ title: String, action: @escaping () -> Void) {
@@ -408,7 +450,7 @@ final class GridRowView: NSTableRowView {
             guard content.values.indices.contains(column) else { continue }
             let frame = tableView.rect(ofColumn: column)
 
-            if content.selectedColumn == column {
+            if content.selected?.contains(column) == true {
                 context.setFillColor(
                     NSColor.controlAccentColor.withAlphaComponent(0.25).cgColor)
                 context.fill(CGRect(x: frame.minX, y: 0, width: frame.width, height: bounds.height))
@@ -463,7 +505,7 @@ enum Clipboard {
     }
 }
 
-/// A table that prepares many more rows than the window shows.
+/// A table that handles its own mouse and prepares many more rows than the window shows.
 ///
 /// AppKit only builds the cells it is about to draw. On a fast scroll it then builds them while
 /// you drag, and the grid stutters. `prepareContent` widens the band that AppKit fills, so the
@@ -481,5 +523,52 @@ final class OverdrawTableView: NSTableView {
     override func prepareContent(in rect: NSRect) {
         super.prepareContent(
             in: rect.insetBy(dx: -Self.horizontalOverdraw, dy: -Self.verticalOverdraw))
+    }
+
+    // MARK: - Mouse and keyboard
+
+    var onCellMouseDown: ((_ row: Int, _ column: Int, _ extend: Bool, _ clicks: Int) -> Void)?
+    var onCellDrag: ((_ row: Int, _ column: Int) -> Void)?
+    var onCopy: (() -> Void)?
+
+    override var acceptsFirstResponder: Bool { true }
+
+    /// Picks a cell, then follows the pointer until the button comes up.
+    ///
+    /// `NSTableView` selects whole rows, so the cell block is this app's own work. The tracking
+    /// loop keeps the drag inside one mouse down, which is what lets a block grow.
+    override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+
+        let point = convert(event.locationInWindow, from: nil)
+        let row = row(at: point)
+        let column = column(at: point)
+        guard row >= 0, column >= 0 else {
+            super.mouseDown(with: event)
+            return
+        }
+
+        onCellMouseDown?(row, column, event.modifierFlags.contains(.shift), event.clickCount)
+        guard event.clickCount == 1 else { return }
+
+        while let next = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            if next.type == .leftMouseUp { break }
+            autoscroll(with: next)
+            let dragPoint = convert(next.locationInWindow, from: nil)
+            let dragRow = self.row(at: dragPoint)
+            let dragColumn = self.column(at: dragPoint)
+            guard dragRow >= 0, dragColumn >= 0 else { continue }
+            onCellDrag?(dragRow, dragColumn)
+        }
+    }
+
+    /// Command-C reaches here through the responder chain.
+    @objc func copy(_ sender: Any?) {
+        onCopy?()
+    }
+
+    override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(copy(_:)) { return true }
+        return super.validateUserInterfaceItem(item)
     }
 }

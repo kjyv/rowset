@@ -43,7 +43,10 @@ final class QueryTab: Identifiable {
 
     /// Shared state.
     var rowLimitText: String
-    var selectedCell: CellAddress?
+    /// The block of cells you picked. Its focus is the cell the value pane shows.
+    var selection: CellSelection?
+
+    var selectedCell: CellAddress? { selection?.focus }
     /// A column to scroll to. The grid clears it once it jumped there.
     var revealColumn: String?
     var result: ResultSet?

@@ -62,7 +62,7 @@ struct ResultPane: View {
         ResultTableView(
             result: result,
             sortOrder: $tab.sortOrder,
-            selectedCell: $tab.selectedCell,
+            selection: $tab.selection,
             revealColumn: $tab.revealColumn,
             onOpenValue: { model.isInspectorVisible = true },
             onSortChange: onSortChange)
