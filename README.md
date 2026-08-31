@@ -11,7 +11,7 @@ connection, look at the tables, and read the first rows with a filter and a sort
 - Signs in with AWS IAM or with a user and a password. An IAM token comes from
   `aws rds generate-db-auth-token` at every connect. A password goes into the login keychain.
 - Shows schemas, tables, views, and columns in a tree on the left.
-- Opens a table in a tab. Each tab has a `WHERE` field, a row limit, and sortable columns.
+- Opens a table in a tab. Each tab has a `WHERE` field, sortable columns, and pages.
 - Shows the whole value of the cell you click in a pane under the grid. It formats JSON and
   keeps the key order that the server sent.
 - Copies a value, a column name, or a whole row from the right click menu of a cell.
@@ -221,6 +221,26 @@ name **batch**.
 There is no way back, on purpose. The statement may end up showing another table than the one it
 started on, so a filter field or an edit button would then lie about what is on screen. Open the
 table again from the sidebar for that.
+
+## Pages
+
+A widget floats over the bottom of the grid:
+
+```
+|<   <   1-25 ⌄   of 26+   >   >|
+```
+
+- The arrows step a page, and the outer two jump to the first and the last.
+- **1-25** opens a menu of page sizes: 25, 50, 100, 200, 500, 1000.
+- **of 26+** is what the app knows without asking. Press it to run a count, and the plus turns
+  into the real number.
+
+The plus costs nothing. Every page asks the server for **one row more** than it shows. That extra
+row never reaches the grid, and it is what says whether another page follows. Only the last page
+button needs the real count, so it runs one first.
+
+A new filter, sort, or page size puts you back on the first page and forgets the count, because
+all three make the old count wrong.
 
 ## Changing a value
 

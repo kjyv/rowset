@@ -235,6 +235,56 @@ final class LiveConnectionTests: XCTestCase {
         XCTAssertEqual(key.map { $0[0] }, ["a", "b"], "both columns, in key order")
     }
 
+    /// Walks the pages of a table of its own, and checks the count against them.
+    func testPagesWalkTheWholeTable() async throws {
+        let bookmark = try liveBookmark()
+        let session = PostgresSession(bookmark: bookmark)
+        try await session.connect()
+
+        let table = "rowset_page_test_\(UUID().uuidString.prefix(8).lowercased())"
+        let qualified = SQLBuilder.qualifiedName(schema: "public", table: table)
+        _ = try await session.query(
+            "CREATE TABLE \(qualified) (id integer PRIMARY KEY)", maxRows: 1)
+        defer {
+            Task {
+                _ = try? await session.query("DROP TABLE IF EXISTS \(qualified)", maxRows: 1)
+                await session.close()
+            }
+        }
+        _ = try await session.query(
+            "INSERT INTO \(qualified) SELECT generate_series(1, 12)", maxRows: 1)
+
+        let pageSize = 5
+        var seen: [String] = []
+        var offset = 0
+        var pages = 0
+
+        // The query asks for one row over the page, which is what says more follow.
+        while pages < 10 {
+            let sql = SQLBuilder.selectRows(
+                schema: "public", table: table, filter: "", orderBy: "id ASC",
+                limit: pageSize + 1, offset: offset)
+            let rows = try await session.queryStrings(sql)
+            pages += 1
+
+            let hasMore = rows.count > pageSize
+            seen.append(contentsOf: rows.prefix(pageSize).map { $0[0] })
+            guard hasMore else { break }
+            offset += pageSize
+        }
+
+        XCTAssertEqual(pages, 3, "12 rows in pages of 5")
+        XCTAssertEqual(seen, (1...12).map(String.init), "every row once, in order")
+
+        let count = try await session.queryStrings(
+            SQLBuilder.countRows(schema: "public", table: table, filter: ""))
+        XCTAssertEqual(count.first?.first, "12")
+
+        let filtered = try await session.queryStrings(
+            SQLBuilder.countRows(schema: "public", table: table, filter: "id > 8"))
+        XCTAssertEqual(filtered.first?.first, "4", "the count keeps the filter")
+    }
+
     func testAWrongStatementKeepsTheConnectionOpen() async throws {
         let bookmark = try liveBookmark()
         let session = PostgresSession(bookmark: bookmark)

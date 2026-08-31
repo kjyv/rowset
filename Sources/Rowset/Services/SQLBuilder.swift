@@ -119,7 +119,8 @@ enum SQLBuilder {
         table: String,
         filter: String,
         orderBy: String,
-        limit: Int
+        limit: Int,
+        offset: Int = 0
     ) -> String {
         var sql = "SELECT * FROM \(qualifiedName(schema: schema, table: table))"
 
@@ -134,6 +135,15 @@ enum SQLBuilder {
         }
 
         sql += "\nLIMIT \(max(1, limit))"
+        if offset > 0 { sql += "\nOFFSET \(offset)" }
+        return sql
+    }
+
+    /// Counts the rows a filter matches, for the page widget.
+    static func countRows(schema: String, table: String, filter: String) -> String {
+        var sql = "SELECT count(*) FROM \(qualifiedName(schema: schema, table: table))"
+        let trimmed = filter.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { sql += "\nWHERE \(trimmed)" }
         return sql
     }
 }

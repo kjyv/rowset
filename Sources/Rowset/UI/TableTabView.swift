@@ -47,7 +47,7 @@ struct TableTabView: View {
                 placeholder: tab.filterPlaceholder,
                 completions: tab.completionNames,
                 keywords: SQLKeywords.filter,
-                onSubmit: { Task { await model.runTableQuery(tab) } })
+                onSubmit: { Task { await model.reloadTable(tab) } })
                 .frame(minWidth: 160)
 
             Text("ORDER BY")
@@ -60,13 +60,13 @@ struct TableTabView: View {
                 placeholder: tab.orderByPlaceholder,
                 completions: tab.completionNames,
                 keywords: SQLKeywords.orderBy,
-                onSubmit: { Task { await model.runTableQuery(tab) } })
+                onSubmit: { Task { await model.reloadTable(tab) } })
                 .frame(minWidth: 120, maxWidth: 240)
 
             if !tab.orderByText.isEmpty {
                 Button {
                     tab.orderByText = ""
-                    Task { await model.runTableQuery(tab) }
+                    Task { await model.reloadTable(tab) }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                 }
@@ -105,8 +105,10 @@ struct TableTabView: View {
     }
 
     /// A header click already wrote the new ORDER BY, so the rows are fetched again.
+    ///
+    /// A new sort puts the rows in another order, so the page you were on means nothing any more.
     private func sortChanged() {
-        Task { await model.runTableQuery(tab) }
+        Task { await model.reloadTable(tab) }
     }
 
     private func applyLimit() {
@@ -115,7 +117,7 @@ struct TableTabView: View {
             return
         }
         tab.rowLimit = value
-        Task { await model.runTableQuery(tab) }
+        Task { await model.reloadTable(tab) }
     }
 
     /// The bar that appears once you change a cell.
@@ -164,6 +166,10 @@ struct TableTabView: View {
                 ResultPane(
                     model: model, tab: tab, result: result, editable: tab.isEditable,
                     onSortChange: sortChanged)
+                    .overlay(alignment: .bottom) {
+                        PageBar(model: model, tab: tab)
+                            .padding(.bottom, 14)
+                    }
             }
         } else {
             ProgressView()

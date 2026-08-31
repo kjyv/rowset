@@ -3,6 +3,9 @@ import Foundation
 extension AppModel {
 
     /// Runs the query of a table tab and puts the result into the tab.
+    ///
+    /// It asks the server for one row more than the page holds. That extra row is what says
+    /// whether another page follows, and it costs one row instead of a count over the table.
     func runTableQuery(_ tab: QueryTab) async {
         guard case .table(let schema, let name) = tab.kind,
               let connection = connections[tab.connectionID]
@@ -22,9 +25,58 @@ extension AppModel {
             table: name,
             filter: tab.filterText,
             orderBy: tab.orderByText,
-            limit: tab.rowLimit)
+            limit: tab.rowLimit + 1,
+            offset: tab.pageOffset)
 
-        await run(sql, in: tab, connection: connection, expectedColumns: tab.knownColumns)
+        guard var result = await execute(
+            sql, in: tab, connection: connection, expectedColumns: tab.knownColumns)
+        else { return }
+
+        // The extra row never reaches the grid. It only answers whether more follow.
+        if result.rows.count > tab.rowLimit {
+            result.rows.removeLast()
+            result.truncated = true
+            tab.hasMoreRows = true
+        } else {
+            tab.hasMoreRows = false
+            tab.totalRows = tab.pageOffset + result.rows.count
+        }
+
+        tab.result = result
+        saveSession()
+    }
+
+    /// Runs the query again from the first page. A new filter or sort makes the count wrong.
+    func reloadTable(_ tab: QueryTab) async {
+        tab.resetPaging()
+        await runTableQuery(tab)
+    }
+
+    /// Moves to another page of the same query.
+    func goToPage(offset: Int, in tab: QueryTab) async {
+        let wanted = max(0, offset)
+        guard wanted != tab.pageOffset else { return }
+        tab.pageOffset = wanted
+        await runTableQuery(tab)
+    }
+
+    /// Counts what the filter matches, so the widget can name the last page.
+    func countRows(in tab: QueryTab) async {
+        guard case .table(let schema, let name) = tab.kind,
+              let connection = connections[tab.connectionID],
+              !tab.isCounting
+        else { return }
+
+        tab.isCounting = true
+        defer { tab.isCounting = false }
+
+        let sql = SQLBuilder.countRows(schema: schema, table: name, filter: tab.filterText)
+        guard let result = try? await connection.run(sql, limit: 1),
+              let text = result.rows.first?.values.first?.text,
+              let count = Int(text)
+        else { return }
+
+        tab.totalRows = count
     }
 
     /// The statement that the filter fields of a table tab stand for.
@@ -91,15 +143,33 @@ extension AppModel {
         connection: ConnectionModel,
         expectedColumns: [ResultColumn]
     ) async {
-        guard !tab.isRunning else { return }
+        guard let result = await execute(
+            sql, in: tab, connection: connection, expectedColumns: expectedColumns)
+        else { return }
+        tab.result = result
+        saveSession()
+    }
+
+    /// Runs a statement and gives the result back instead of putting it on screen.
+    ///
+    /// The table query trims a row off the result before it shows it, and a result already on
+    /// screen would flash the extra row first.
+    private func execute(
+        _ sql: String,
+        in tab: QueryTab,
+        connection: ConnectionModel,
+        expectedColumns: [ResultColumn]
+    ) async -> ResultSet? {
+        guard !tab.isRunning else { return nil }
         tab.isRunning = true
         tab.errorText = nil
         tab.lastStatement = sql
         defer { tab.isRunning = false }
 
         do {
-            tab.result = try await connection.run(
-                sql, limit: tab.rowLimit, expectedColumns: expectedColumns)
+            // One row over the page limit, so the query says whether more follow.
+            return try await connection.run(
+                sql, limit: tab.rowLimit + 1, expectedColumns: expectedColumns)
         } catch let error as AWSAuthError {
             tab.errorText = error.errorDescription
             if case .ssoExpired(let profile, let detail) = error {
@@ -110,6 +180,7 @@ extension AppModel {
         }
 
         saveSession()
+        return nil
     }
 
     /// Applies a new sort and runs the query again.

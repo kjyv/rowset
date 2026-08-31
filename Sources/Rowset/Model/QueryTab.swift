@@ -39,6 +39,55 @@ final class QueryTab: Identifiable {
     /// The columns from the catalog. They fill the header when a query returns no row.
     var knownColumns: [ResultColumn] = []
 
+    // MARK: - Pages
+
+    /// How many rows the page skips.
+    var pageOffset = 0
+    /// True when the server had at least one row more than this page holds.
+    var hasMoreRows = false
+    /// How many rows the filter matches. It stays `nil` until a count runs.
+    var totalRows: Int?
+    var isCounting = false
+
+    /// The rows this page shows, as `12-36`, or `0` for an empty page.
+    var pageRange: String {
+        let count = result?.rows.count ?? 0
+        guard count > 0 else { return "0" }
+        return "\(pageOffset + 1)-\(pageOffset + count)"
+    }
+
+    /// The number of rows, or the number seen so far with a plus after it.
+    ///
+    /// The query asks for one row more than the page holds. That extra row is what says there is
+    /// more without a count, and it costs nothing.
+    var totalDescription: String {
+        if let totalRows { return "\(totalRows)" }
+        let seen = pageOffset + (result?.rows.count ?? 0)
+        return hasMoreRows ? "\(seen)+" : "\(seen)"
+    }
+
+    var isFirstPage: Bool { pageOffset == 0 }
+
+    /// The offset of the last page, once the count is known.
+    var lastPageOffset: Int? {
+        guard let totalRows, totalRows > 0 else { return nil }
+        return ((totalRows - 1) / max(1, rowLimit)) * max(1, rowLimit)
+    }
+
+    var isLastPage: Bool {
+        if let lastPageOffset { return pageOffset >= lastPageOffset }
+        return !hasMoreRows
+    }
+
+    /// Puts the paging back to the first page and forgets the count.
+    ///
+    /// A new filter or a new sort makes both wrong, so neither may be carried over.
+    func resetPaging() {
+        pageOffset = 0
+        hasMoreRows = false
+        totalRows = nil
+    }
+
     /// SQL tab state.
     var sqlText = ""
     /// Where the caret sits in the editor. It decides which statement runs.
