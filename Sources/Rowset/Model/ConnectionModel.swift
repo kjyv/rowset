@@ -121,8 +121,13 @@ final class ConnectionModel: Identifiable {
     }
 
     /// Puts the columns in the order the table asks for.
+    ///
+    /// Sorting by name used to replace the list, which threw the catalog order away and left no
+    /// way back. Each column carries its position now, so both orders are always at hand.
     static func ordered(_ columns: [TreeNode], byName: Bool) -> [TreeNode] {
-        guard byName else { return columns }
+        guard byName else {
+            return columns.sorted { $0.columnPosition < $1.columnPosition }
+        }
         return columns.sorted {
             $0.kind.title.localizedStandardCompare($1.kind.title) == .orderedAscending
         }
@@ -137,14 +142,15 @@ final class ConnectionModel: Identifiable {
 
     private func columnNodes(schema: String, table: String) async throws -> [TreeNode] {
         let rows = try await session.queryStrings(CatalogQueries.columns(schema: schema, table: table))
-        return rows.compactMap { row in
+        return rows.enumerated().compactMap { position, row in
             guard row.count >= 3 else { return nil }
             return TreeNode(kind: .column(
                 schema: schema,
                 table: table,
                 name: row[0],
                 type: row[1],
-                nullable: row[2].uppercased() == "YES"))
+                nullable: row[2].uppercased() == "YES",
+                position: position))
         }
     }
 

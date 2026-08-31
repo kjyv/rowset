@@ -350,11 +350,13 @@ struct TreeNodeRow: View {
                 Button(node.sortsColumnsByName
                        ? "Sort Columns by Position"
                        : "Sort Columns by Name") {
-                    connection.setColumnSorting(byName: !node.sortsColumnsByName, on: node)
-                    node.isExpanded = true
+                    let byName = !node.sortsColumnsByName
+                    connection.setColumnSorting(byName: byName, on: node)
                     if node.children == nil {
                         Task { await connection.loadChildren(of: node) }
                     }
+                    // The tabs of this table follow, so the tree and the grid agree.
+                    Task { await model.setColumnSorting(byName: byName, forTablesOf: node) }
                 }
             }
             if node.kind.canHaveChildren {

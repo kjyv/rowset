@@ -132,6 +132,18 @@ final class QueryTab: Identifiable {
     var primaryKey: [String] = []
     /// What the catalog says about each column, by name.
     var columnInfo: [String: ColumnInfo] = [:]
+    /// True when the grid shows the columns in the order of their names.
+    var sortsColumnsByName = false
+
+    /// The columns the query asks for, in the order the grid shows them.
+    ///
+    /// An empty list means `SELECT *`, which gives the order of the table.
+    var selectedColumnNames: [String] {
+        guard sortsColumnsByName else { return [] }
+        return knownColumns
+            .map(\.name)
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
     /// The changes you made but have not sent. The grid marks these cells.
     var edits: [CellAddress: String?] = [:]
 

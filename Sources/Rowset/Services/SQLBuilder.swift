@@ -120,9 +120,10 @@ enum SQLBuilder {
         filter: String,
         orderBy: String,
         limit: Int,
-        offset: Int = 0
+        offset: Int = 0,
+        columns: [String] = []
     ) -> String {
-        var sql = "SELECT * FROM \(qualifiedName(schema: schema, table: table))"
+        var sql = "SELECT \(columnList(columns)) FROM \(qualifiedName(schema: schema, table: table))"
 
         let trimmedFilter = filter.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedFilter.isEmpty {
@@ -144,9 +145,9 @@ enum SQLBuilder {
     /// A console gets this one. The page widget adds the LIMIT and the OFFSET around it, so a
     /// LIMIT written in here would fight the widget.
     static func selectAll(
-        schema: String, table: String, filter: String, orderBy: String
+        schema: String, table: String, filter: String, orderBy: String, columns: [String] = []
     ) -> String {
-        var sql = "SELECT * FROM \(qualifiedName(schema: schema, table: table))"
+        var sql = "SELECT \(columnList(columns)) FROM \(qualifiedName(schema: schema, table: table))"
 
         let trimmedFilter = filter.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedFilter.isEmpty { sql += "\nWHERE \(trimmedFilter)" }
@@ -193,6 +194,12 @@ enum SQLBuilder {
         \(statement)
         ) AS \(pageAlias)
         """
+    }
+
+    /// The columns a SELECT asks for. An empty list means every column, in the table order.
+    static func columnList(_ columns: [String]) -> String {
+        guard !columns.isEmpty else { return "*" }
+        return columns.map(quoteIdentifier).joined(separator: ", ")
     }
 
     /// Counts the rows a filter matches, for the page widget.

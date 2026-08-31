@@ -16,7 +16,9 @@ enum TreeNodeKind: Hashable, Sendable {
     case schema(name: String)
     case table(schema: String, name: String)
     case view(schema: String, name: String)
-    case column(schema: String, table: String, name: String, type: String, nullable: Bool)
+    case column(
+        schema: String, table: String, name: String, type: String, nullable: Bool,
+        position: Int)
 
     var isTableLike: Bool {
         switch self {
@@ -46,14 +48,14 @@ enum TreeNodeKind: Hashable, Sendable {
         case .schema(let name): name
         case .table(_, let name): name
         case .view(_, let name): name
-        case .column(_, _, let name, _, _): name
+        case .column(_, _, let name, _, _, _): name
         }
     }
 
     /// The grey text after the title.
     var detail: String? {
         switch self {
-        case .column(_, _, _, let type, let nullable): nullable ? type : "\(type), not null"
+        case .column(_, _, _, let type, let nullable, _): nullable ? type : "\(type), not null"
         case .view: "view"
         default: nil
         }
@@ -75,6 +77,13 @@ final class TreeNode: Identifiable {
     /// The database gives them in the order they were declared, which is right for reading a
     /// table and wrong for finding one column among sixty.
     var sortsColumnsByName = false
+
+    /// Where this column stands in the table. The catalog order is kept, so a sort by name can
+    /// always be undone.
+    var columnPosition: Int {
+        if case .column(_, _, _, _, _, let position) = kind { return position }
+        return 0
+    }
 
     init(kind: TreeNodeKind) {
         self.kind = kind

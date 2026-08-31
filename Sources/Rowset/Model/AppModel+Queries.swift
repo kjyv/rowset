@@ -26,7 +26,8 @@ extension AppModel {
             filter: tab.filterText,
             orderBy: tab.orderByText,
             limit: tab.rowLimit + 1,
-            offset: tab.pageOffset)
+            offset: tab.pageOffset,
+            columns: tab.selectedColumnNames)
 
         guard var result = await execute(
             sql, in: tab, connection: connection, expectedColumns: tab.knownColumns)
@@ -61,6 +62,16 @@ extension AppModel {
     /// asked to see this page again.
     func refreshTable(_ tab: QueryTab) async {
         tab.totalRows = nil
+        await runTableQuery(tab)
+    }
+
+    /// Puts the columns of a table tab in the order of their names, or back in the table order.
+    ///
+    /// The grid follows a SELECT, so the query has to name the columns. Only the order changes,
+    /// so the page and the count both still hold.
+    func setColumnSorting(byName: Bool, for tab: QueryTab) async {
+        guard tab.sortsColumnsByName != byName else { return }
+        tab.sortsColumnsByName = byName
         await runTableQuery(tab)
     }
 
@@ -126,7 +137,8 @@ extension AppModel {
             schema: schema,
             table: name,
             filter: tab.filterText,
-            orderBy: tab.orderByText)
+            orderBy: tab.orderByText,
+            columns: tab.selectedColumnNames)
     }
 
     /// Turns a table tab into a console on the query it was showing.
@@ -320,5 +332,26 @@ extension AppModel {
     func applySort(_ sort: SortSpec?, to tab: QueryTab) async {
         tab.orderByText = sort?.text ?? ""
         await runTableQuery(tab)
+    }
+}
+
+extension AppModel {
+    /// Puts every open tab of one table into the same column order as its row in the tree.
+    func setColumnSorting(byName: Bool, forTablesOf node: TreeNode) async {
+        guard case .table(let schema, let name) = node.kind else {
+            guard case .view(let schema, let name) = node.kind else { return }
+            await applyColumnSorting(byName: byName, schema: schema, table: name)
+            return
+        }
+        await applyColumnSorting(byName: byName, schema: schema, table: name)
+    }
+
+    private func applyColumnSorting(byName: Bool, schema: String, table: String) async {
+        for tab in tabs {
+            guard case .table(let tabSchema, let tabName) = tab.kind,
+                  tabSchema == schema, tabName == table
+            else { continue }
+            await setColumnSorting(byName: byName, for: tab)
+        }
     }
 }

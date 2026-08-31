@@ -5,9 +5,10 @@ import XCTest
 final class ColumnOrderTests: XCTestCase {
 
     private func columns(_ names: [String]) -> [TreeNode] {
-        names.map {
+        names.enumerated().map { position, name in
             TreeNode(kind: .column(
-                schema: "public", table: "batch", name: $0, type: "text", nullable: true))
+                schema: "public", table: "batch", name: name, type: "text", nullable: true,
+                position: position))
         }
     }
 
@@ -47,6 +48,57 @@ final class ColumnOrderTests: XCTestCase {
 
     func testAnEmptyListStaysEmpty() {
         XCTAssertTrue(ConnectionModel.ordered([], byName: true).isEmpty)
+    }
+
+    /// Sorting by name used to replace the list, which threw the catalog order away. Going back
+    /// then changed nothing at all.
+    func testTheOrderGoesBackToThePosition() {
+        let nodes = columns(["id", "created_at", "batch_index", "amount"])
+        let byName = ConnectionModel.ordered(nodes, byName: true)
+        XCTAssertEqual(titles(byName), ["amount", "batch_index", "created_at", "id"])
+
+        let back = ConnectionModel.ordered(byName, byName: false)
+        XCTAssertEqual(titles(back), ["id", "created_at", "batch_index", "amount"])
+    }
+
+    // MARK: - The grid follows the same order
+
+    private func tab(columns names: [String]) -> QueryTab {
+        let tab = QueryTab(
+            connectionID: UUID(), connectionName: "t",
+            kind: .table(schema: "public", name: "batch"), rowLimit: 25)
+        tab.knownColumns = names.enumerated().map {
+            ResultColumn(id: $0.offset, name: $0.element, typeName: "text")
+        }
+        return tab
+    }
+
+    func testThePlainQueryAsksForEveryColumn() {
+        let tab = tab(columns: ["id", "created_at", "amount"])
+        XCTAssertTrue(tab.selectedColumnNames.isEmpty)
+        XCTAssertEqual(SQLBuilder.columnList(tab.selectedColumnNames), "*")
+    }
+
+    /// The grid follows a SELECT, so the query has to name the columns in the order it wants.
+    func testSortingByNameNamesTheColumnsInOrder() {
+        let tab = tab(columns: ["id", "created_at", "amount"])
+        tab.sortsColumnsByName = true
+
+        XCTAssertEqual(tab.selectedColumnNames, ["amount", "created_at", "id"])
+        XCTAssertEqual(
+            SQLBuilder.columnList(tab.selectedColumnNames),
+            "\"amount\", \"created_at\", \"id\"")
+    }
+
+    func testTheQueryCarriesTheColumnList() {
+        let sql = SQLBuilder.selectRows(
+            schema: "public", table: "batch", filter: "", orderBy: "", limit: 26,
+            columns: ["amount", "id"])
+        XCTAssertTrue(sql.hasPrefix("SELECT \"amount\", \"id\" FROM \"public\".\"batch\""))
+    }
+
+    func testAnOddColumnNameIsQuotedInTheList() {
+        XCTAssertEqual(SQLBuilder.columnList(["odd name"]), "\"odd name\"")
     }
 
     func testTheOrderIsRememberedOnTheTable() {

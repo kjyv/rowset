@@ -362,7 +362,7 @@ final class AppModel {
             let tab = openTable(schema: schema, name: name, connection: connection)
             Task { await runTableQuery(tab) }
 
-        case .column(let schema, let table, let name, _, _):
+        case .column(let schema, let table, let name, _, _, _):
             // Opens the table, or moves to the tab that already shows it, then jumps sideways
             // to the column you picked.
             let tab = openTable(schema: schema, name: table, connection: connection)
