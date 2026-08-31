@@ -27,12 +27,27 @@ extension AppModel {
         await run(sql, in: tab, connection: connection, expectedColumns: tab.knownColumns)
     }
 
-    /// Runs the text of a SQL tab.
-    func runSQLTab(_ tab: QueryTab) async {
+    /// Runs the statement the caret is in.
+    func runCurrentStatement(_ tab: QueryTab) async {
+        guard let connection = connections[tab.connectionID],
+              let statement = tab.currentStatement
+        else { return }
+        await run(statement.text, in: tab, connection: connection, expectedColumns: [])
+    }
+
+    /// Runs every statement of the editor, one after the other.
+    ///
+    /// It stops at the first failure, and the result of the last statement stays on screen. The
+    /// statements do not share a transaction, which matches what a console does.
+    func runAllStatements(_ tab: QueryTab) async {
         guard let connection = connections[tab.connectionID] else { return }
-        let sql = tab.sqlText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !sql.isEmpty else { return }
-        await run(sql, in: tab, connection: connection, expectedColumns: [])
+        let statements = tab.sqlStatements
+        guard !statements.isEmpty else { return }
+
+        for statement in statements {
+            await run(statement.text, in: tab, connection: connection, expectedColumns: [])
+            if tab.errorText != nil { return }
+        }
     }
 
     private func run(

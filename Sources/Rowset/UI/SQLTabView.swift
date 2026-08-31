@@ -23,14 +23,22 @@ struct SQLTabView: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Button {
-                    Task { await model.runSQLTab(tab) }
+                    Task { await model.runCurrentStatement(tab) }
                 } label: {
                     Label("Run", systemImage: "play.fill")
                 }
                 .keyboardShortcut(.return, modifiers: .command)
-                .disabled(tab.isRunning
-                          || tab.sqlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .help("Run the statement (Command-Return)")
+                .disabled(tab.isRunning || tab.currentStatement == nil)
+                .help("Run the statement the caret is in (Command-Return)")
+
+                Button {
+                    Task { await model.runAllStatements(tab) }
+                } label: {
+                    Label("Run All", systemImage: "play.square.stack")
+                }
+                .keyboardShortcut(.return, modifiers: [.command, .shift])
+                .disabled(tab.isRunning || tab.sqlStatements.count < 2)
+                .help("Run every statement, one after the other (Shift-Command-Return)")
 
                 Text("Read at most")
                     .font(.caption)
@@ -46,6 +54,12 @@ struct SQLTabView: View {
                 InspectorToggle(model: model)
 
                 Spacer()
+
+                if tab.sqlStatements.count > 1 {
+                    Text(statementPosition)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Text(tab.connectionName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -55,10 +69,7 @@ struct SQLTabView: View {
 
             Divider()
 
-            TextEditor(text: $tab.sqlText)
-                .font(.system(size: 12, design: .monospaced))
-                .scrollContentBackground(.hidden)
-                .padding(4)
+            SQLEditorView(text: $tab.sqlText, caret: $tab.sqlCaret)
         }
     }
 
@@ -100,6 +111,15 @@ struct SQLTabView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .background(.bar)
+    }
+
+    /// Which of the statements the caret is in, for the bar at the top.
+    private var statementPosition: String {
+        let statements = tab.sqlStatements
+        guard let current = tab.currentStatement,
+              let index = statements.firstIndex(of: current)
+        else { return "" }
+        return "statement \(index + 1) of \(statements.count)"
     }
 
     private func applyLimit() {

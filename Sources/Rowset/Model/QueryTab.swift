@@ -40,6 +40,15 @@ final class QueryTab: Identifiable {
 
     /// SQL tab state.
     var sqlText = ""
+    /// Where the caret sits in the editor. It decides which statement runs.
+    var sqlCaret = 0
+
+    var sqlStatements: [SQLStatement] { SQLStatementSplitter.statements(in: sqlText) }
+
+    /// The statement the caret is in, which is what the Run button sends.
+    var currentStatement: SQLStatement? {
+        SQLStatementSplitter.statement(at: sqlCaret, in: sqlStatements)
+    }
 
     /// Shared state.
     var rowLimitText: String

@@ -16,7 +16,8 @@ connection, look at the tables, and read the first rows with a filter and a sort
   keeps the key order that the server sent.
 - Copies a value, a column name, or a whole row from the right click menu of a cell.
 - Changes a value and sends the edits together, after it shows you the SQL.
-- Runs a free-form statement in a query tab.
+- Runs SQL in a query tab, one statement at a time or all of them, with the words coloured and
+  the statement under the caret marked.
 - Remembers the window size and position.
 
 Postgres is the only driver for now. SQLite comes later.
@@ -127,6 +128,35 @@ To update the certificate bundle, run `./Scripts/fetch-rds-ca.sh`.
 | Window frame and row limit | `UserDefaults` for `tech.alcemy.Rowset` |
 
 The bookmark file is plain JSON. You can edit it by hand and copy it to another machine.
+
+## The query tab
+
+The editor holds as many statements as you like.
+
+| Key | What runs |
+| --- | --- |
+| Command-Return | the statement the caret is in |
+| Shift-Command-Return | every statement, one after the other |
+
+The statement the caret is in carries a light band, so you always see what Command-Return will
+send. A statement needs no closing semicolon, which matters for the last one.
+
+**Run All** stops at the first failure and leaves the result of the last statement on screen. The
+statements do not share a transaction, which is what a console does.
+
+### Why a lexer and not tree-sitter
+
+`SQLLexer` reads the text once into keywords, names, strings, numbers, parameters, comments and
+punctuation. That one pass serves both jobs:
+
+- **Colouring** needs to know what each piece is.
+- **Splitting statements** needs to know which semicolons are real. A split on every semicolon is
+  wrong, because one also sits inside a string, inside a quoted name, inside a comment and inside
+  a dollar quoted function body.
+
+Neither job asks what the words mean, so a grammar would add a build dependency and buy nothing.
+A parser earns its place only for colouring by meaning, such as marking a table apart from a
+column. That door stays open.
 
 ## Changing a value
 
