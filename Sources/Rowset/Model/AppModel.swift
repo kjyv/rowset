@@ -55,6 +55,10 @@ final class AppModel {
     var editedBookmark: Bookmark?
     var ssoPrompt: SSOPrompt?
 
+    /// Whether the sidebar shows. Without this there is no way back once it closes, because the
+    /// window carries no toolbar and so no toggle of its own.
+    var isSidebarVisible = true { didSet { saveSession() } }
+
     /// The value pane belongs to the window, so every tab shows it the same way.
     var isInspectorVisible = true { didSet { saveSession() } }
     var inspectorHeight: Double = 190 { didSet { saveSession() } }
@@ -76,6 +80,7 @@ final class AppModel {
         let state = sessionStore.load()
         isInspectorVisible = state.inspectorVisible
         inspectorHeight = state.inspectorHeight
+        isSidebarVisible = state.sidebarVisible
         syncConnections()
 
         let known = Set(store.bookmarks.map(\.id))
@@ -142,7 +147,8 @@ final class AppModel {
             tabs: tabs.map(\.state),
             selectedTabIndex: tabs.firstIndex { $0.id == selectedTabID },
             inspectorVisible: isInspectorVisible,
-            inspectorHeight: inspectorHeight)
+            inspectorHeight: inspectorHeight,
+            sidebarVisible: isSidebarVisible)
     }
 
     func saveSession() {
@@ -239,6 +245,22 @@ final class AppModel {
             selectedTabID = tabs.indices.contains(index) ? tabs[index].id : tabs.last?.id
         }
         saveSession()
+    }
+
+    /// Moves to the next tab, and wraps around at the end.
+    func selectNextTab() { step(by: 1) }
+
+    /// Moves to the tab before this one, and wraps around at the start.
+    func selectPreviousTab() { step(by: -1) }
+
+    private func step(by offset: Int) {
+        guard !tabs.isEmpty else { return }
+        guard let current = tabs.firstIndex(where: { $0.id == selectedTabID }) else {
+            selectedTabID = tabs.first?.id
+            return
+        }
+        let next = (current + offset + tabs.count) % tabs.count
+        selectedTabID = tabs[next].id
     }
 
     var selectedTab: QueryTab? {

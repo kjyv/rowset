@@ -32,6 +32,7 @@ struct SessionState: Codable, Sendable {
     var selectedTabIndex: Int?
     var inspectorVisible: Bool = true
     var inspectorHeight: Double = 190
+    var sidebarVisible: Bool = true
 
     func nodes(for bookmarkID: UUID) -> [NodePath] {
         expandedNodes[bookmarkID.uuidString] ?? []

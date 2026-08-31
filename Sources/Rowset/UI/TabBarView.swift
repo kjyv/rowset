@@ -4,6 +4,9 @@ import SwiftUI
 struct TabBarView: View {
     @Bindable var model: AppModel
 
+    /// The height of one tab row. The bar material may fill the strip above it, but no tab may.
+    static let height: CGFloat = 28
+
     var body: some View {
         HStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
@@ -21,8 +24,7 @@ struct TabBarView: View {
 
             newQueryButton
         }
-        .frame(height: 30)
-        .background(.bar)
+        .frame(height: TabBarView.height)
     }
 
     /// The same action as Command-T. A shortcut with no button is a shortcut nobody finds.
@@ -33,7 +35,7 @@ struct TabBarView: View {
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 11, weight: .medium))
-                .frame(width: 28, height: 30)
+                .frame(width: 28, height: TabBarView.height)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
@@ -73,8 +75,14 @@ private struct TabButton: View {
             .help("Close this tab")
         }
         .padding(.horizontal, 10)
-        .frame(height: 30)
-        .background(isSelected ? Color.accentColor.opacity(0.14) : .clear)
+        .frame(height: TabBarView.height)
+        .background(alignment: .bottom) {
+            // The height is fixed on purpose. Without it SwiftUI stretches the tint into the
+            // safe area at the top of the window and the tab bleeds into the title bar strip.
+            Rectangle()
+                .fill(isSelected ? Color.accentColor.opacity(0.14) : .clear)
+                .frame(height: TabBarView.height)
+        }
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(isSelected ? Color.accentColor : .clear)

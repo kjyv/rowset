@@ -3,14 +3,22 @@ import SwiftUI
 struct ContentView: View {
     @Bindable var model: AppModel
 
+    private var columnVisibility: Binding<NavigationSplitViewVisibility> {
+        Binding(
+            get: { model.isSidebarVisible ? .all : .detailOnly },
+            set: { model.isSidebarVisible = $0 != .detailOnly })
+    }
+
     var body: some View {
-        NavigationSplitView {
+        // NavigationSplitView puts the window buttons on the sidebar by itself. Only the detail
+        // column keeps a strip of its own at the top, and that one is taken away below.
+        NavigationSplitView(columnVisibility: columnVisibility) {
             SidebarView(model: model)
                 .navigationSplitViewColumnWidth(min: 220, ideal: 300, max: 520)
         } detail: {
             DetailView(model: model)
         }
-        .modifier(HiddenToolbarTitle())
+        .background(TitlebarTabBar(model: model))
         .sheet(item: $model.editedBookmark) { bookmark in
             BookmarkEditor(bookmark: bookmark) { saved in
                 model.store.upsert(saved)
@@ -26,28 +34,12 @@ struct ContentView: View {
     }
 }
 
-/// Takes the title out of the toolbar where the system offers a switch for it.
-struct HiddenToolbarTitle: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(macOS 15.0, *) {
-            // The title goes, and the empty row it sat in goes with it.
-            content
-                .toolbar(removing: .title)
-                .toolbar(.hidden, for: .windowToolbar)
-        } else {
-            content.toolbar(.hidden, for: .windowToolbar)
-        }
-    }
-}
-
 /// The right side: the tab bar over the open tab.
 struct DetailView: View {
     @Bindable var model: AppModel
 
     var body: some View {
         VStack(spacing: 0) {
-            TabBarView(model: model)
-            Divider()
 
             if let tab = model.selectedTab {
                 switch tab.kind {
