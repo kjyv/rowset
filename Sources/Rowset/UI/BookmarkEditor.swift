@@ -7,6 +7,9 @@ struct BookmarkEditor: View {
     @State private var draft: Bookmark
     @State private var profiles: [AWSProfile] = []
     @State private var testState: TestState = .idle
+    /// The password is not part of the bookmark. It lives in the login keychain.
+    @State private var password = ""
+    @State private var didLoadPassword = false
 
     private let onSave: (Bookmark) -> Void
 
@@ -35,27 +38,40 @@ struct BookmarkEditor: View {
                 }
 
                 Section("Server") {
-                    TextField("Host", text: $draft.host,
-                              prompt: Text("name.eu-central-1.rds.amazonaws.com"))
+                    TextField("Host", text: $draft.host, prompt: Text(hostPrompt))
                     TextField("Port", value: $draft.port, format: .number.grouping(.never))
                     TextField("Database", text: $draft.database, prompt: Text("cube_testing"))
-                    TextField("User", text: $draft.username, prompt: Text("cube_testing_iam_owner"))
+                    TextField("User", text: $draft.username, prompt: Text(userPrompt))
                 }
 
-                Section("AWS IAM") {
-                    Picker("Profile", selection: $draft.awsProfile) {
-                        if draft.awsProfile.isEmpty {
-                            Text("Choose a profile").tag("")
-                        }
-                        ForEach(profiles) { profile in
-                            Text(profile.name).tag(profile.name)
-                        }
-                        if !draft.awsProfile.isEmpty,
-                           !profiles.contains(where: { $0.name == draft.awsProfile }) {
-                            Text("\(draft.awsProfile) (not in ~/.aws/config)").tag(draft.awsProfile)
+                Section("Authentication") {
+                    Picker("Method", selection: $draft.authMethod) {
+                        ForEach(AuthMethod.allCases, id: \.self) { method in
+                            Text(method.label).tag(method)
                         }
                     }
-                    TextField("Region", text: $draft.awsRegion, prompt: Text("eu-central-1"))
+
+                    switch draft.authMethod {
+                    case .awsIAM:
+                        Picker("Profile", selection: $draft.awsProfile) {
+                            if draft.awsProfile.isEmpty {
+                                Text("Choose a profile").tag("")
+                            }
+                            ForEach(profiles) { profile in
+                                Text(profile.name).tag(profile.name)
+                            }
+                            if !draft.awsProfile.isEmpty,
+                               !profiles.contains(where: { $0.name == draft.awsProfile }) {
+                                Text("\(draft.awsProfile) (not in ~/.aws/config)")
+                                    .tag(draft.awsProfile)
+                            }
+                        }
+                        TextField("Region", text: $draft.awsRegion, prompt: Text("eu-central-1"))
+
+                    case .password:
+                        SecureField("Password", text: $password)
+                    }
+
                     Picker("Encryption", selection: $draft.sslMode) {
                         ForEach(SSLMode.allCases, id: \.self) { mode in
                             Text(mode.label).tag(mode)
@@ -64,8 +80,7 @@ struct BookmarkEditor: View {
                 }
 
                 Section {
-                    Text("The password is an IAM auth token. The AWS CLI creates it at every "
-                         + "connect. Nothing secret is stored in this file.")
+                    Text(authNote)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -86,7 +101,13 @@ struct BookmarkEditor: View {
                 Button("Cancel", role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Button("Save") {
-                    onSave(normalized())
+                    let bookmark = normalized()
+                    if bookmark.authMethod == .password {
+                        KeychainStore.setPassword(password, for: bookmark.id)
+                    } else {
+                        KeychainStore.removePassword(for: bookmark.id)
+                    }
+                    onSave(bookmark)
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
@@ -96,6 +117,10 @@ struct BookmarkEditor: View {
         }
         .frame(width: 560, height: 660)
         .task {
+            if !didLoadPassword {
+                didLoadPassword = true
+                password = KeychainStore.password(for: draft.id) ?? ""
+            }
             profiles = AWSProfiles.load()
             if draft.awsProfile.isEmpty, let first = profiles.first {
                 draft.awsProfile = first.name
@@ -107,6 +132,26 @@ struct BookmarkEditor: View {
                let region = profile.region {
                 draft.awsRegion = region
             }
+        }
+    }
+
+    private var hostPrompt: String {
+        draft.authMethod == .awsIAM
+            ? "name.eu-central-1.rds.amazonaws.com"
+            : "localhost"
+    }
+
+    private var userPrompt: String {
+        draft.authMethod == .awsIAM ? "cube_testing_iam_owner" : "postgres"
+    }
+
+    private var authNote: String {
+        switch draft.authMethod {
+        case .awsIAM:
+            "The password is an IAM auth token. The AWS CLI creates it at every connect. "
+                + "Nothing secret is stored in the bookmark file."
+        case .password:
+            "The password goes into your login keychain, not into the bookmark file."
         }
     }
 
@@ -143,6 +188,10 @@ struct BookmarkEditor: View {
 
     private func runTest() {
         let bookmark = normalized()
+        // The test needs the password that is on screen, not the one on disk.
+        if bookmark.authMethod == .password {
+            KeychainStore.setPassword(password, for: bookmark.id)
+        }
         testState = .running
         Task {
             let session = PostgresSession(bookmark: bookmark)

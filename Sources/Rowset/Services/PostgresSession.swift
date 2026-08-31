@@ -7,6 +7,7 @@ import PostgresNIO
 enum SessionError: LocalizedError {
     case notConnected
     case certificateBundleMissing
+    case passwordMissing(String)
 
     var errorDescription: String? {
         switch self {
@@ -15,6 +16,8 @@ enum SessionError: LocalizedError {
         case .certificateBundleMissing:
             "The RDS certificate bundle is missing from the app. "
                 + "Run Scripts/fetch-rds-ca.sh and build again."
+        case .passwordMissing(let name):
+            "No password is saved for \(name). Open the connection and type it again."
         }
     }
 }
@@ -65,12 +68,12 @@ actor PostgresSession {
     private func openConnection() async throws {
         await close()
 
-        let token = try await AWSTokenProvider.authToken(for: bookmark)
+        let secret = try await password()
         let configuration = PostgresConnection.Configuration(
             host: bookmark.host,
             port: bookmark.port,
             username: bookmark.username,
-            password: token,
+            password: secret,
             database: bookmark.database,
             tls: try makeTLS())
 
@@ -94,10 +97,30 @@ actor PostgresSession {
         try? await connection.close()
     }
 
+    /// The password the server wants.
+    ///
+    /// An IAM connection asks the AWS CLI for a token that lasts 15 minutes. A password
+    /// connection reads the login keychain.
+    private func password() async throws -> String {
+        switch bookmark.authMethod {
+        case .awsIAM:
+            return try await AWSTokenProvider.authToken(for: bookmark)
+        case .password:
+            guard let stored = KeychainStore.password(for: bookmark.id), !stored.isEmpty else {
+                throw SessionError.passwordMissing(bookmark.displayName)
+            }
+            return stored
+        }
+    }
+
     private func makeTLS() throws -> PostgresConnection.Configuration.TLS {
+        if bookmark.sslMode == .disable { return .disable }
+
         var configuration = TLSConfiguration.makeClientConfiguration()
 
         switch bookmark.sslMode {
+        case .disable:
+            break
         case .verifyFull:
             guard let path = CertificateBundle.rdsRootsPath() else {
                 throw SessionError.certificateBundleMissing

@@ -7,8 +7,9 @@ connection, look at the tables, and read the first rows with a filter and a sort
 
 ## What it does
 
-- Saves connections as bookmarks. No password is stored, because none exists.
-- Gets the connection password from `aws rds generate-db-auth-token` at every connect.
+- Saves connections as bookmarks. The bookmark file holds no secret.
+- Signs in with AWS IAM or with a user and a password. An IAM token comes from
+  `aws rds generate-db-auth-token` at every connect. A password goes into the login keychain.
 - Shows schemas, tables, views, and columns in a tree on the left.
 - Opens a table in a tab. Each tab has a `WHERE` field, a row limit, and sortable columns.
 - Shows the whole value of the cell you click in a pane under the grid. It formats JSON and
@@ -51,6 +52,16 @@ AWS user name.
 
 ## Authentication
 
+Each bookmark picks one of two methods.
+
+### User and password
+
+The user name lives in the bookmark file. The password goes into your login keychain under the
+id of that bookmark, and it is removed when you delete the bookmark. Pick this for a server that
+has no IAM, such as one on your own machine.
+
+### AWS IAM
+
 Rowset never signs a request itself. At every connect it runs:
 
 ```
@@ -78,6 +89,8 @@ RDS IAM authentication needs an encrypted connection. Each bookmark picks one of
   `Sources/Rowset/Resources/rds-global-bundle.pem`.
 - **require** encrypts the connection but does not check the server identity. Use this only when
   verify-full fails and you know why.
+- **disable** turns encryption off. Only for a server on your own machine or a private network.
+  RDS IAM refuses this mode.
 
 To update the certificate bundle, run `./Scripts/fetch-rds-ca.sh`.
 
@@ -86,6 +99,8 @@ To update the certificate bundle, run `./Scripts/fetch-rds-ca.sh`.
 | Item | Location |
 | --- | --- |
 | Bookmarks | `~/Library/Application Support/Rowset/bookmarks.json` |
+| Session | `~/Library/Application Support/Rowset/session.json` |
+| Passwords | The login keychain, service `tech.alcemy.Rowset` |
 | Window frame and row limit | `UserDefaults` for `tech.alcemy.Rowset` |
 
 The bookmark file is plain JSON. You can edit it by hand and copy it to another machine.

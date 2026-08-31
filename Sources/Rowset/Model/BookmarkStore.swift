@@ -48,6 +48,8 @@ final class BookmarkStore {
 
     func remove(id: UUID) {
         bookmarks.removeAll { $0.id == id }
+        // A password outlives its bookmark otherwise.
+        KeychainStore.removePassword(for: id)
         save()
     }
 
