@@ -39,6 +39,18 @@ missing, and generates the Xcode project. To generate the project alone, run `xc
 
 `Rowset.xcodeproj` is not in git. `project.yml` describes it.
 
+## The app icon
+
+The icon is a drawing in code, not a file somebody exported. `Scripts/make-icon.swift` renders
+every size into the asset catalog:
+
+```sh
+swift Scripts/make-icon.swift
+```
+
+Change a color or a proportion in that file, run it again, and build. The PNG files are committed,
+so a normal build needs no extra step.
+
 ## Add a connection
 
 1. Press the `+` button under the sidebar.
