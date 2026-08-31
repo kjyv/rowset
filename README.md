@@ -124,6 +124,7 @@ To update the certificate bundle, run `./Scripts/fetch-rds-ca.sh`.
 | --- | --- |
 | Bookmarks | `~/Library/Application Support/Rowset/bookmarks.json` |
 | Session | `~/Library/Application Support/Rowset/session.json` |
+| Saved queries | `~/Library/Application Support/Rowset/buffers.json` |
 | Passwords | The login keychain, service `tech.alcemy.Rowset` |
 | Window frame and row limit | `UserDefaults` for `tech.alcemy.Rowset` |
 
@@ -132,6 +133,18 @@ The bookmark file is plain JSON. You can edit it by hand and copy it to another 
 ## The query tab
 
 The editor holds as many statements as you like.
+
+### Saved queries
+
+The button beside **Run All** opens the list of saved queries of this connection. Pick one to
+switch to it, or start a new one, or drop the one you are in. Each connection keeps its own list,
+so the queries of one database never appear under another.
+
+A query takes its name from its first line. There is no rename, because the name follows the text
+while you type.
+
+Queries live in `~/Library/Application Support/Rowset/buffers.json` and outlive the tab that
+showed them. Deleting a connection deletes its queries with it.
 
 | Key | What runs |
 | --- | --- |

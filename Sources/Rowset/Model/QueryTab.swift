@@ -42,6 +42,8 @@ final class QueryTab: Identifiable {
     var sqlText = ""
     /// Where the caret sits in the editor. It decides which statement runs.
     var sqlCaret = 0
+    /// The buffer this console shows. Its text is kept per connection.
+    var bufferID: UUID?
 
     var sqlStatements: [SQLStatement] { SQLStatementSplitter.statements(in: sqlText) }
 
@@ -169,6 +171,7 @@ final class QueryTab: Identifiable {
             filterText: filterText,
             orderByText: orderByText,
             sqlText: sqlText,
+            bufferID: bufferID,
             rowLimit: rowLimit)
     }
 

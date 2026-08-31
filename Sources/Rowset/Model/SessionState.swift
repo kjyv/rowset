@@ -16,6 +16,7 @@ struct TabState: Codable, Sendable {
     var filterText: String = ""
     var orderByText: String = ""
     var sqlText: String = ""
+    var bufferID: UUID?
     var rowLimit: Int = 50
 
     var isSQLTab: Bool { schema == nil || table == nil }

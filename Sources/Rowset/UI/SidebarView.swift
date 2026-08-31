@@ -92,7 +92,7 @@ struct SidebarView: View {
 
             Button {
                 guard let id = model.selectedBookmarkID else { return }
-                Task { await model.forget(bookmarkID: id) }
+                Task { await model.forgetEverything(bookmarkID: id) }
                 model.store.remove(id: id)
                 model.selectedBookmarkID = nil
             } label: {
@@ -198,7 +198,7 @@ struct BookmarkSection: View {
         Button("Duplicate") { model.duplicate(bookmarkID: bookmark.id) }
         Button("Edit…") { model.editedBookmark = bookmark }
         Button("Delete", role: .destructive) {
-            Task { await model.forget(bookmarkID: bookmark.id) }
+            Task { await model.forgetEverything(bookmarkID: bookmark.id) }
             model.store.remove(id: bookmark.id)
         }
     }

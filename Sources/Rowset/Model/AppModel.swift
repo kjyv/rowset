@@ -46,11 +46,17 @@ enum SidebarSelection: Hashable {
 @Observable
 final class AppModel {
     let store: BookmarkStore
+    let bufferStore: BufferStore
     private let sessionStore: SessionStore
 
-    init(store: BookmarkStore? = nil, sessionStore: SessionStore? = nil) {
+    init(
+        store: BookmarkStore? = nil,
+        sessionStore: SessionStore? = nil,
+        bufferStore: BufferStore? = nil
+    ) {
         self.store = store ?? BookmarkStore()
         self.sessionStore = sessionStore ?? SessionStore()
+        self.bufferStore = bufferStore ?? BufferStore()
     }
 
     var connections: [UUID: ConnectionModel] = [:]
@@ -133,7 +139,7 @@ final class AppModel {
                     connectionName: connection.bookmark.displayName,
                     kind: .sql,
                     rowLimit: tabState.rowLimit)
-                tab.sqlText = tabState.sqlText
+                adoptBuffer(tab, connection: connection, preferred: tabState.bufferID)
             }
             tabs.append(tab)
         }
@@ -186,6 +192,7 @@ final class AppModel {
     }
 
     func saveSessionNow() {
+        bufferStore.saveNow()
         guard isRestored else { return }
         sessionStore.saveNow(currentSessionState())
     }
@@ -231,6 +238,12 @@ final class AppModel {
         connections[bookmarkID] = nil
     }
 
+    /// Drops a connection and everything that belonged to it.
+    func forgetEverything(bookmarkID: UUID) async {
+        await forget(bookmarkID: bookmarkID)
+        bufferStore.removeAll(for: bookmarkID)
+    }
+
     // MARK: - Tabs
 
     /// Opens a table tab, or moves to the tab that already shows this table.
@@ -260,7 +273,7 @@ final class AppModel {
             connectionName: connection.bookmark.displayName,
             kind: .sql,
             rowLimit: defaultRowLimit)
-        tab.sqlText = defaultSQL(for: connection)
+        adoptBuffer(tab, connection: connection)
         tabs.append(tab)
         selectedTabID = tab.id
         saveSession()

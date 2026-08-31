@@ -17,6 +17,9 @@ struct SQLTabView: View {
             }
             .frame(minHeight: 160)
         }
+        // The editor holds the working copy. Every change goes back into its buffer, and the
+        // store waits half a second before it writes the file.
+        .onChange(of: tab.sqlText) { _, _ in model.persistBuffer(tab) }
     }
 
     private var editor: some View {
@@ -39,6 +42,10 @@ struct SQLTabView: View {
                 .keyboardShortcut(.return, modifiers: [.command, .shift])
                 .disabled(tab.isRunning || tab.sqlStatements.count < 2)
                 .help("Run every statement, one after the other (Shift-Command-Return)")
+
+                bufferMenu
+
+                Divider().frame(height: 16)
 
                 Text("Read at most")
                     .font(.caption)
@@ -111,6 +118,53 @@ struct SQLTabView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .background(.bar)
+    }
+
+    /// The list of saved buffers of this connection, and the way to add or drop one.
+    ///
+    /// A buffer takes its name from its first line, so switching needs no rename dialog and the
+    /// name stays right while you type.
+    private var bufferMenu: some View {
+        let buffers = model.buffers(for: tab)
+
+        return Menu {
+            if buffers.isEmpty {
+                Text("No saved query")
+            } else {
+                ForEach(buffers) { buffer in
+                    Button {
+                        model.switchBuffer(tab, to: buffer.id)
+                    } label: {
+                        if buffer.id == tab.bufferID {
+                            Label(buffer.title, systemImage: "checkmark")
+                        } else {
+                            Text(buffer.title)
+                        }
+                    }
+                }
+            }
+
+            Divider()
+
+            Button("New Query") { model.newBuffer(tab) }
+                .keyboardShortcut("n", modifiers: [.command, .option])
+
+            Button("Delete This Query", role: .destructive) { model.deleteBuffer(tab) }
+                .disabled(tab.bufferID == nil)
+        } label: {
+            Label(currentBufferTitle, systemImage: "list.bullet.rectangle")
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Switch to another saved query, or start one")
+    }
+
+    private var currentBufferTitle: String {
+        let buffers = model.buffers(for: tab)
+        guard let id = tab.bufferID,
+              let buffer = buffers.first(where: { $0.id == id })
+        else { return "Query" }
+        return buffer.title
     }
 
     /// Which of the statements the caret is in, for the bar at the top.
