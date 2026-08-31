@@ -19,6 +19,10 @@ final class ConnectionModel: Identifiable {
     let bookmark: Bookmark
 
     var state: State = .disconnected
+    /// Every table of the database. The sidebar filter searches this list.
+    private(set) var allTables: [TableRef] = []
+    private var didLoadAllTables = false
+    private var isLoadingTables = false
     /// True when the sidebar shows the tree of this connection.
     var isExpanded = false
     var schemas: [TreeNode] = []
@@ -56,12 +60,16 @@ final class ConnectionModel: Identifiable {
     func disconnect() async {
         await session.close()
         schemas = []
+        allTables = []
+        didLoadAllTables = false
         state = .disconnected
     }
 
     func refresh() async {
         guard state.isConnected else { return }
         schemas = []
+        allTables = []
+        didLoadAllTables = false
         do {
             try await loadSchemas()
         } catch {
@@ -132,6 +140,31 @@ final class ConnectionModel: Identifiable {
             guard row.count >= 2 else { return nil }
             return ResultColumn(id: index, name: row[0], typeName: row[1])
         }
+    }
+
+    // MARK: - Filter
+
+    /// Reads every table of the database once. The sidebar filter needs the whole list, and the
+    /// tree loads a schema only when you open it.
+    func loadAllTables() async {
+        guard state.isConnected, !didLoadAllTables, !isLoadingTables else { return }
+        isLoadingTables = true
+        defer { isLoadingTables = false }
+
+        guard let rows = try? await session.queryStrings(CatalogQueries.allTables) else { return }
+        allTables = rows.compactMap { row in
+            guard row.count >= 3 else { return nil }
+            return TableRef(
+                schema: row[0], name: row[1], isView: row[2].uppercased().contains("VIEW"))
+        }
+        didLoadAllTables = true
+    }
+
+    /// The tables whose name holds the text. A column name never matches.
+    func tables(matching text: String) -> [TableRef] {
+        let needle = text.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !needle.isEmpty else { return [] }
+        return allTables.filter { $0.name.lowercased().contains(needle) }
     }
 
     // MARK: - Remembering the open rows

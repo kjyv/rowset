@@ -33,8 +33,8 @@ struct TabBarView: View {
             guard let connection = model.activeConnection else { return }
             model.openSQLTab(connection: connection)
         } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 11, weight: .medium))
+            Image(systemName: "apple.terminal")
+                .font(.system(size: 12, weight: .medium))
                 .frame(width: 28, height: TabBarView.height)
                 .contentShape(Rectangle())
         }

@@ -20,6 +20,14 @@ enum CatalogQueries {
         """
     }
 
+    /// Every table and view of the database, for the sidebar filter.
+    static let allTables = """
+        SELECT table_schema, table_name, table_type
+        FROM information_schema.tables
+        WHERE table_schema NOT LIKE 'pg\\_%' AND table_schema <> 'information_schema'
+        ORDER BY table_schema, table_name
+        """
+
     /// The columns of one table, in their real order.
     static func columns(schema: String, table: String) -> String {
         """

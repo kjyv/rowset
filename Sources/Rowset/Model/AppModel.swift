@@ -37,6 +37,13 @@ final class AppModel {
     var tabs: [QueryTab] = []
     var selectedTabID: QueryTab.ID? { didSet { saveSession() } }
     var sidebarSelection: SidebarSelection?
+    /// What the sidebar filter holds. An empty value shows the tree.
+    var sidebarFilter = ""
+
+    /// The connections that are open, in the order of the bookmark list.
+    var connectedConnections: [ConnectionModel] {
+        store.bookmarks.compactMap { connections[$0.id] }.filter { $0.state.isConnected }
+    }
 
     /// The connection row itself. The buttons that edit or delete need this one, so a selected
     /// column never puts a delete on its table.
@@ -231,7 +238,7 @@ final class AppModel {
             connectionName: connection.bookmark.displayName,
             kind: .sql,
             rowLimit: defaultRowLimit)
-        tab.sqlText = "SELECT 1;"
+        tab.sqlText = defaultSQL(for: connection)
         tabs.append(tab)
         selectedTabID = tab.id
         saveSession()
@@ -267,10 +274,51 @@ final class AppModel {
         tabs.first { $0.id == selectedTabID }
     }
 
-    /// The connection that a new SQL tab or a new query belongs to.
+    /// The connection that a new query tab belongs to.
+    ///
+    /// A query console belongs to a database and not to a table, so an open table tab is not a
+    /// condition. Any open connection will do.
     var activeConnection: ConnectionModel? {
-        if let selectedTab { return connections[selectedTab.connectionID] }
-        if let activeBookmarkID { return connections[activeBookmarkID] }
-        return nil
+        if let selectedTab, let connection = connections[selectedTab.connectionID],
+           connection.state.isConnected {
+            return connection
+        }
+        if let activeBookmarkID, let connection = connections[activeBookmarkID],
+           connection.state.isConnected {
+            return connection
+        }
+        return connectedConnections.first
+    }
+
+    /// Copies a bookmark, so a second database on the same server costs a few keystrokes.
+    func duplicate(bookmarkID: UUID) {
+        guard let original = store.bookmarks.first(where: { $0.id == bookmarkID }) else { return }
+        var copy = original
+        copy.id = UUID()
+        copy.name = "\(original.displayName) copy"
+        store.upsert(copy)
+        syncConnections()
+        editedBookmark = copy
+    }
+
+    /// The statement a new query console starts with.
+    ///
+    /// A real table name beats a placeholder, so the console picks one the connection knows.
+    func defaultSQL(for connection: ConnectionModel) -> String {
+        let table = selectedTableRef(in: connection) ?? connection.allTables.first
+        guard let table else { return "SELECT *\nFROM public.your_table\nLIMIT 50;" }
+        return """
+            SELECT *
+            FROM \(SQLBuilder.qualifiedName(schema: table.schema, table: table.name))
+            LIMIT 50;
+            """
+    }
+
+    /// The table of the tab in front, when it belongs to this connection.
+    private func selectedTableRef(in connection: ConnectionModel) -> TableRef? {
+        guard let tab = selectedTab, tab.connectionID == connection.id,
+              case .table(let schema, let name) = tab.kind
+        else { return nil }
+        return TableRef(schema: schema, name: name, isView: false)
     }
 }

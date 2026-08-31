@@ -6,22 +6,90 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            filterField
+
             List(selection: $model.sidebarSelection) {
-                Section("Connections") {
-                    ForEach(model.store.bookmarks) { bookmark in
-                        BookmarkSection(model: model, bookmark: bookmark)
+                if model.sidebarFilter.isEmpty {
+                    Section("Connections") {
+                        ForEach(model.store.bookmarks) { bookmark in
+                            BookmarkSection(model: model, bookmark: bookmark)
+                        }
                     }
+                } else {
+                    filterResults
                 }
             }
             .listStyle(.sidebar)
+            // The tree and the filter results are two different lists. Without a separate
+            // identity SwiftUI reuses the rows, and a connection row stayed drawn over the first
+            // result.
+            .id(model.sidebarFilter.isEmpty)
 
             Divider()
             toolbar
+        }
+        // The tree loads one schema at a time, so a filter needs the whole table list first.
+        .task(id: model.sidebarFilter) {
+            guard !model.sidebarFilter.isEmpty else { return }
+            for connection in model.connectedConnections {
+                await connection.loadAllTables()
+            }
         }
         .task { await model.restoreSession() }
         .onChange(of: model.store.bookmarks) { _, _ in
             model.syncConnections()
             model.saveSession()
+        }
+    }
+
+    private var filterField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+                .font(.caption)
+            TextField("Filter tables", text: $model.sidebarFilter)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+            if !model.sidebarFilter.isEmpty {
+                Button {
+                    model.sidebarFilter = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .help("Clear the filter")
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+    }
+
+    /// The tables that match, under the name of the connection they belong to.
+    ///
+    /// The name matters: two databases often hold a table of the same name.
+    @ViewBuilder
+    private var filterResults: some View {
+        let connections = model.connectedConnections
+        if connections.isEmpty {
+            Text("Open a connection to search its tables.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            ForEach(connections) { connection in
+                let matches = connection.tables(matching: model.sidebarFilter)
+                Section(connection.bookmark.displayName) {
+                    if matches.isEmpty {
+                        Text("No table matches")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(matches) { table in
+                            FilterResultRow(model: model, connection: connection, table: table)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -105,6 +173,7 @@ struct BookmarkSection: View {
             }
             .disabled(connection?.state.isConnected != true)
             Divider()
+            Button("Duplicate") { model.duplicate(bookmarkID: bookmark.id) }
             Button("Edit…") { model.editedBookmark = bookmark }
             Button("Delete", role: .destructive) {
                 Task { await model.forget(bookmarkID: bookmark.id) }
@@ -273,5 +342,44 @@ struct TreeNodeRow: View {
         case .schema:
             node.isExpanded.toggle()
         }
+    }
+}
+
+
+/// One table of the filter result. It carries the schema, because two schemas may hold the same
+/// table name.
+struct FilterResultRow: View {
+    let model: AppModel
+    let connection: ConnectionModel
+    let table: TableRef
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: table.symbolName)
+                .foregroundStyle(.secondary)
+                .frame(width: 14)
+            Text(table.name)
+                .lineLimit(1)
+            Text(table.schema)
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+            Spacer(minLength: 2)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { open() }
+        .contextMenu {
+            Button("Open") { open() }
+            Button("Copy Name") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(table.name, forType: .string)
+            }
+        }
+    }
+
+    private func open() {
+        let tab = model.openTable(
+            schema: table.schema, name: table.name, connection: connection)
+        Task { await model.runTableQuery(tab) }
     }
 }

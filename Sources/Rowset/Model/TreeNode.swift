@@ -1,6 +1,16 @@
 import Foundation
 import Observation
 
+/// One table or view of a database.
+struct TableRef: Identifiable, Hashable, Sendable {
+    var schema: String
+    var name: String
+    var isView: Bool
+
+    var id: String { "\(schema).\(name)" }
+    var symbolName: String { isView ? "eye" : "tablecells" }
+}
+
 /// What a tree row stands for.
 enum TreeNodeKind: Hashable, Sendable {
     case schema(name: String)
