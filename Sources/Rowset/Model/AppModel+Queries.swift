@@ -27,6 +27,39 @@ extension AppModel {
         await run(sql, in: tab, connection: connection, expectedColumns: tab.knownColumns)
     }
 
+    /// The statement that the filter fields of a table tab stand for.
+    ///
+    /// This is the same SELECT the table runs, so opening the console shows you what you were
+    /// already looking at and lets you take it further.
+    func generatedSQL(for tab: QueryTab) -> String {
+        guard case .table(let schema, let name) = tab.kind else { return tab.sqlText }
+        return SQLBuilder.selectRows(
+            schema: schema,
+            table: name,
+            filter: tab.filterText,
+            orderBy: tab.orderByText,
+            limit: tab.rowLimit) + ";"
+    }
+
+    /// Shows or hides the console of a table tab.
+    ///
+    /// The first time it opens, it takes the query of the filter fields. After that it keeps what
+    /// you wrote, so closing and opening the pane loses nothing.
+    func toggleConsole(_ tab: QueryTab) {
+        if !tab.showsConsole, !tab.didPrefillConsole {
+            resetConsoleFromFilter(tab)
+        }
+        tab.showsConsole.toggle()
+        saveSession()
+    }
+
+    /// Writes the query of the filter fields into the console, over whatever is there.
+    func resetConsoleFromFilter(_ tab: QueryTab) {
+        tab.sqlText = generatedSQL(for: tab)
+        tab.sqlCaret = 0
+        tab.didPrefillConsole = true
+    }
+
     /// Runs the statement the caret is in.
     func runCurrentStatement(_ tab: QueryTab) async {
         guard let connection = connections[tab.connectionID],

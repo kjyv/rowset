@@ -200,6 +200,27 @@ Neither job asks what the words mean, so a grammar would add a build dependency 
 A parser earns its place only for colouring by meaning, such as marking a table apart from a
 column. That door stays open.
 
+### A console on a table
+
+The terminal button beside the value pane button turns the filter fields of a table tab into a
+console. The grid below stays where it is, so the same rows are still in front of you.
+
+The console opens with the query the filter fields stood for, filter, sort and limit and all:
+
+```sql
+SELECT * FROM "public"."batch"
+WHERE slug = 'x'
+ORDER BY created_at DESC
+LIMIT 200;
+```
+
+Take it further from there, run it with Command-Return, and the grid shows the result. **From
+Table** writes the query of the filter fields back over it. Closing the console and opening it
+again keeps what you wrote.
+
+**Editing is off while a console is open.** A statement may join two tables or rename a column,
+and an UPDATE built from such a result would hit the wrong rows. Close the console to edit again.
+
 ## Changing a value
 
 1. Double click a cell. A short value opens a field in the cell. A boolean opens a menu of

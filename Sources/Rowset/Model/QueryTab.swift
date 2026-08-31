@@ -45,6 +45,11 @@ final class QueryTab: Identifiable {
     /// The buffer this console shows. Its text is kept per connection.
     var bufferID: UUID?
 
+    /// True when a table tab shows the console over its grid instead of the filter fields.
+    var showsConsole = false
+    /// Whether the console of this table tab has been filled from the filter fields already.
+    var didPrefillConsole = false
+
     var sqlStatements: [SQLStatement] { SQLStatementSplitter.statements(in: sqlText) }
 
     /// The statement the caret is in, which is what the Run button sends.
@@ -71,8 +76,11 @@ final class QueryTab: Identifiable {
     var edits: [CellAddress: String?] = [:]
 
     /// True when a row can be found again by its key, which an UPDATE needs.
+    ///
+    /// The console turns editing off. Its statement may join two tables or rename a column, and
+    /// an UPDATE built from such a result would hit the wrong rows.
     var isEditable: Bool {
-        if case .table = kind { return !primaryKey.isEmpty }
+        if case .table = kind { return !primaryKey.isEmpty && !showsConsole }
         return false
     }
 
@@ -172,6 +180,7 @@ final class QueryTab: Identifiable {
             orderByText: orderByText,
             sqlText: sqlText,
             bufferID: bufferID,
+            showsConsole: showsConsole,
             rowLimit: rowLimit)
     }
 
