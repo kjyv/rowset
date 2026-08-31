@@ -8,6 +8,24 @@ struct SSOPrompt: Identifiable {
     var detail: String
 }
 
+/// What the sidebar has selected.
+///
+/// A bookmark row and a tree row are different things, so one type names both. Without a tag of
+/// its own, a tree row fell back to the row of its connection, and the highlight then covered the
+/// whole group.
+enum SidebarSelection: Hashable {
+    case bookmark(UUID)
+    case node(id: UUID, bookmarkID: UUID)
+
+    /// The connection this row belongs to.
+    var bookmarkID: UUID {
+        switch self {
+        case .bookmark(let id): id
+        case .node(_, let bookmarkID): bookmarkID
+        }
+    }
+}
+
 /// The state of the whole window.
 @MainActor
 @Observable
@@ -17,7 +35,20 @@ final class AppModel {
     var connections: [UUID: ConnectionModel] = [:]
     var tabs: [QueryTab] = []
     var selectedTabID: QueryTab.ID?
-    var selectedBookmarkID: UUID?
+    var sidebarSelection: SidebarSelection?
+
+    /// The connection row itself. The buttons that edit or delete need this one, so a selected
+    /// column never puts a delete on its table.
+    var selectedBookmarkID: UUID? {
+        get {
+            if case .bookmark(let id) = sidebarSelection { return id }
+            return nil
+        }
+        set { sidebarSelection = newValue.map { .bookmark($0) } }
+    }
+
+    /// The connection of whatever the sidebar has selected, a tree row included.
+    var activeBookmarkID: UUID? { sidebarSelection?.bookmarkID }
 
     /// The bookmark that the editor sheet edits. `nil` closes the sheet.
     var editedBookmark: Bookmark?
@@ -123,7 +154,7 @@ final class AppModel {
     /// The connection that a new SQL tab or a new query belongs to.
     var activeConnection: ConnectionModel? {
         if let selectedTab { return connections[selectedTab.connectionID] }
-        if let selectedBookmarkID { return connections[selectedBookmarkID] }
+        if let activeBookmarkID { return connections[activeBookmarkID] }
         return nil
     }
 }

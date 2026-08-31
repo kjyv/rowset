@@ -15,6 +15,8 @@ struct WindowAccessor: NSViewRepresentable {
             // Restore first. Setting the autosave name writes the current frame at once.
             window.setFrameUsingName(autosaveName)
             window.setFrameAutosaveName(autosaveName)
+            // The menu bar already names the app, so the title bar repeats it for nothing.
+            window.titleVisibility = .hidden
         }
         return view
     }

@@ -6,11 +6,10 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            List(selection: $model.selectedBookmarkID) {
+            List(selection: $model.sidebarSelection) {
                 Section("Connections") {
                     ForEach(model.store.bookmarks) { bookmark in
                         BookmarkSection(model: model, bookmark: bookmark)
-                            .tag(bookmark.id)
                     }
                 }
             }
@@ -81,7 +80,7 @@ struct BookmarkSection: View {
         DisclosureGroup(isExpanded: $isExpanded) {
             content
         } label: {
-            label
+            label.tag(SidebarSelection.bookmark(bookmark.id))
         }
         .onChange(of: isExpanded) { _, expanded in
             guard expanded, let connection, connection.state == .disconnected else { return }
@@ -190,15 +189,20 @@ struct TreeNodeRow: View {
                         .foregroundStyle(.secondary)
                 }
             } label: {
-                rowLabel
+                taggedRowLabel
             }
             .onChange(of: node.isExpanded) { _, expanded in
                 guard expanded else { return }
                 Task { await connection.loadChildren(of: node) }
             }
         } else {
-            rowLabel
+            taggedRowLabel
         }
+    }
+
+    /// Every tree row carries its own tag, so a click selects that row and nothing else.
+    private var taggedRowLabel: some View {
+        rowLabel.tag(SidebarSelection.node(id: node.id, bookmarkID: connection.id))
     }
 
     private var rowLabel: some View {
