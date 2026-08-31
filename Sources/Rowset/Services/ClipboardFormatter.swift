@@ -41,6 +41,32 @@ enum ClipboardFormatter {
             .replacingOccurrences(of: "\t", with: " ")
     }
 
+    /// An HTML table. Numbers, Excel, Word and Mail all read this and keep every cell apart,
+    /// whatever a value holds.
+    static func html(_ rows: [[String]], hasHeader: Bool) -> String {
+        var out = "<table>"
+        for (index, row) in rows.enumerated() {
+            let tag = hasHeader && index == 0 ? "th" : "td"
+            out += "<tr>"
+            for value in row {
+                out += "<\(tag)>\(escapeHTML(value))</\(tag)>"
+            }
+            out += "</tr>"
+        }
+        out += "</table>"
+        return out
+    }
+
+    private static func escapeHTML(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\r\n", with: "<br>")
+            .replacingOccurrences(of: "\n", with: "<br>")
+            .replacingOccurrences(of: "\r", with: "<br>")
+    }
+
     private static func quote(_ value: String) -> String {
         let needsQuotes = value.contains(",") || value.contains("\"")
             || value.contains("\n") || value.contains("\r")

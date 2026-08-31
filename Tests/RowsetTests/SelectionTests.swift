@@ -126,3 +126,63 @@ final class ResultBlockTests: XCTestCase {
         XCTAssertTrue(ResultSet().block(selection, includeHeader: false).isEmpty)
     }
 }
+
+final class ClipboardTableTests: XCTestCase {
+
+    private let block = [
+        ["created_at", "notes"],
+        ["2022-09-02", "one, two"],
+        ["2022-09-03", "says \"hi\"\nsecond line"],
+    ]
+
+    func testHTMLMarksTheHeaderRow() {
+        let html = ClipboardFormatter.html(block, hasHeader: true)
+        XCTAssertTrue(html.hasPrefix("<table><tr><th>created_at</th><th>notes</th></tr>"))
+        XCTAssertTrue(html.contains("<td>2022-09-02</td>"))
+        XCTAssertTrue(html.hasSuffix("</table>"))
+    }
+
+    func testHTMLWithoutAHeaderUsesDataCellsOnly() {
+        let html = ClipboardFormatter.html(block, hasHeader: false)
+        XCTAssertFalse(html.contains("<th>"))
+    }
+
+    func testHTMLEscapesWhatWouldBreakTheMarkup() {
+        let html = ClipboardFormatter.html([["a & b", "<tag>"]], hasHeader: false)
+        XCTAssertTrue(html.contains("a &amp; b"))
+        XCTAssertTrue(html.contains("&lt;tag&gt;"))
+        XCTAssertFalse(html.contains("<tag>"))
+    }
+
+    func testHTMLKeepsALineBreakInsideACell() {
+        let html = ClipboardFormatter.html([["one\ntwo"]], hasHeader: false)
+        XCTAssertTrue(html.contains("one<br>two"))
+    }
+
+    /// A table reader looks for a type, not for a separator. Plain text alone put the whole block
+    /// into one cell of Numbers.
+    @MainActor
+    func testThePasteboardCarriesEveryTableType() {
+        Clipboard.writeTable(block, hasHeader: true)
+        let pasteboard = NSPasteboard.general
+
+        XCTAssertNotNil(pasteboard.string(forType: .html), "html")
+        XCTAssertNotNil(pasteboard.string(forType: .tabularText), "tabular text")
+        XCTAssertNotNil(pasteboard.string(forType: Clipboard.csvType), "csv")
+        XCTAssertNotNil(pasteboard.string(forType: .string), "plain text")
+
+        let plain = pasteboard.string(forType: .string) ?? ""
+        XCTAssertTrue(plain.contains("\t"), "the plain form stays tab separated")
+        XCTAssertEqual(pasteboard.string(forType: .tabularText), plain)
+
+        let csv = pasteboard.string(forType: Clipboard.csvType) ?? ""
+        XCTAssertTrue(csv.contains("\"one, two\""), "the csv form quotes a comma")
+    }
+
+    @MainActor
+    func testAnEmptyBlockWritesNothing() {
+        Clipboard.write("marker")
+        Clipboard.writeTable([], hasHeader: false)
+        XCTAssertEqual(NSPasteboard.general.string(forType: .string), "marker")
+    }
+}

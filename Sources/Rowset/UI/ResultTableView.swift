@@ -36,7 +36,7 @@ struct ResultTableView: NSViewRepresentable {
             coordinator?.dragged(row: row, column: column)
         }
         tableView.onCopy = { [weak coordinator] in
-            coordinator?.copySelection(format: .tsv, includeHeader: false)
+            coordinator?.copySelection(includeHeader: false)
         }
 
         tableView.style = .fullWidth
@@ -249,12 +249,22 @@ struct ResultTableView: NSViewRepresentable {
                 columnID: parent.result.columns[column].id)
         }
 
-        /// Puts the block on the clipboard.
-        func copySelection(format: ClipboardFormat, includeHeader: Bool) {
-            guard let selection = parent.selection else { return }
-            let block = parent.result.block(selection, includeHeader: includeHeader)
-            guard !block.isEmpty else { return }
+        /// Puts the block on the clipboard in every table format.
+        func copySelection(includeHeader: Bool) {
+            guard let block = selectedBlock(includeHeader: includeHeader) else { return }
+            Clipboard.writeTable(block, hasHeader: includeHeader)
+        }
+
+        /// Puts the block on the clipboard as text only, for a text editor.
+        func copySelectionAsText(format: ClipboardFormat, includeHeader: Bool) {
+            guard let block = selectedBlock(includeHeader: includeHeader) else { return }
             Clipboard.write(ClipboardFormatter.text(block, format: format))
+        }
+
+        private func selectedBlock(includeHeader: Bool) -> [[String]]? {
+            guard let selection = parent.selection else { return nil }
+            let block = parent.result.block(selection, includeHeader: includeHeader)
+            return block.isEmpty ? nil : block
         }
 
         // MARK: Sorting
@@ -332,14 +342,14 @@ struct ResultTableView: NSViewRepresentable {
             let count = selection.cellCount
             let what = selection.isSingleCell ? "Value" : "\(count) Cells"
 
-            add(menu, "Copy \(what)") { self.copySelection(format: .tsv, includeHeader: false) }
-            add(menu, "Copy with Header") {
-                self.copySelection(format: .tsv, includeHeader: true)
-            }
+            add(menu, "Copy \(what)") { self.copySelection(includeHeader: false) }
+            add(menu, "Copy with Header") { self.copySelection(includeHeader: true) }
             menu.addItem(.separator())
-            add(menu, "Copy as CSV") { self.copySelection(format: .csv, includeHeader: false) }
-            add(menu, "Copy as CSV with Header") {
-                self.copySelection(format: .csv, includeHeader: true)
+            add(menu, "Copy as CSV Text") {
+                self.copySelectionAsText(format: .csv, includeHeader: true)
+            }
+            add(menu, "Copy as Tab Separated Text") {
+                self.copySelectionAsText(format: .tsv, includeHeader: true)
             }
             menu.addItem(.separator())
             add(menu, "Select All") { self.selectAll() }
@@ -499,9 +509,36 @@ final class GridRowView: NSTableRowView {
 }
 
 enum Clipboard {
+    /// The type that names comma separated text on the pasteboard.
+    static let csvType = NSPasteboard.PasteboardType("public.comma-separated-values-text")
+
     static func write(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    /// Writes a block of cells in every format a table reader knows.
+    ///
+    /// Plain text alone was not enough. Tab separated text is correct, but nothing on the
+    /// pasteboard said it was a table, so Numbers put the whole block into one cell. The item now
+    /// carries four types, and the receiving app takes the first one it understands:
+    ///
+    /// - `html`, a real table. Numbers, Excel, Word and Mail all read it, and a value may hold a
+    ///   comma, a tab or a line break without any risk.
+    /// - `tabularText`, the type macOS uses for tabular data.
+    /// - comma separated text, for a reader that asks for CSV.
+    /// - plain text, tab separated, as the last resort.
+    static func writeTable(_ rows: [[String]], hasHeader: Bool) {
+        guard !rows.isEmpty else { return }
+
+        let item = NSPasteboardItem()
+        item.setString(ClipboardFormatter.html(rows, hasHeader: hasHeader), forType: .html)
+        item.setString(ClipboardFormatter.tsv(rows), forType: .tabularText)
+        item.setString(ClipboardFormatter.csv(rows), forType: csvType)
+        item.setString(ClipboardFormatter.tsv(rows), forType: .string)
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects([item])
     }
 }
 
