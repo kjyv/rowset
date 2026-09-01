@@ -13,8 +13,8 @@ connection, look at the tables, and read some rows with a filter and a sort.
 - Shows schemas, tables, views, and columns in a tree on the left.
 - Opens a table in a tab. Each tab has a `WHERE` field, sortable columns, and pages.
   **Command-R** fetches the page again, in a table tab and in a console.
-- Shows the whole value of the cell you click in a pane under the grid. It formats JSON, colours
-  it, and keeps the key order that the server sent.
+- Shows the whole value of a cell in a pane under the grid. A double click opens the pane, which
+  each tab starts without. It formats JSON, colours it, and keeps the key order of the server.
 - Moves the picked cell with the arrow keys or with `h`, `j`, `k` and `l`. Shift grows the block.
 - Copies a value, a column name, or a whole row from the right click menu of a cell.
 - Changes a value and sends the edits together, after it shows you the SQL.
@@ -459,8 +459,9 @@ part it draws.
 and the last two share `SyntaxTextView` as well. A JSON value
 over 200,000 characters stays plain, because thousands of colour runs make the pane stall.
 
-**The value pane belongs to the tab.** A console opens without it, and a table tab opens with it.
-It used to belong to the window, so a new console took the pane of the table you came from.
+**The value pane belongs to the tab.** Every tab opens without it. A double click on a cell,
+Shift-Return, or the button in the bar brings it, and each tab remembers its own answer. The pane
+used to belong to the window, so a new tab took the pane of the tab you came from.
 
 **The app is not sandboxed.** It reads `~/.aws/config` and runs the `aws` binary.
 

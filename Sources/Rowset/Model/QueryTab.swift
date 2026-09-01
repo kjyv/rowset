@@ -296,24 +296,15 @@ final class QueryTab: Identifiable {
         self.kind = kind
         self.connectionName = connectionName
         self.rowLimit = rowLimit
-        self.showsValuePane = Self.opensValuePane(for: kind)
-    }
-
-    /// Whether a new tab of this kind starts with the value pane open.
-    ///
-    /// A table tab shows a row of a table, and a long value needs the pane to be readable. A
-    /// console starts with its statement and its result, and the pane would take the room the
-    /// editor needs.
-    static func opensValuePane(for kind: Kind) -> Bool {
-        if case .table = kind { return true }
-        return false
     }
 
     /// Whether this tab shows the value pane under its grid.
     ///
-    /// It belongs to the tab and not to the window, so a console does not open the pane of the
-    /// table tab you came from.
-    var showsValuePane: Bool
+    /// A new tab starts without it. The pane takes room the rows want, and a double click on a
+    /// cell, Shift-Return, or the button in the bar brings it when you need it.
+    ///
+    /// It belongs to the tab and not to the window, so one tab does not open the pane of another.
+    var showsValuePane = false
 
     /// The column names of this table. The filter field completes against these.
     var completionNames: [String] {

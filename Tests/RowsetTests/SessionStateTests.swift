@@ -80,6 +80,27 @@ final class SessionStateTests: XCTestCase {
             try JSONDecoder().decode(SessionState.self, from: Data(json.utf8)))
     }
 
+    /// The pane takes room the rows want, so a tab opens without it whatever it shows.
+    @MainActor
+    func testANewTabOpensWithoutTheValuePane() {
+        func tab(_ kind: QueryTab.Kind) -> QueryTab {
+            QueryTab(connectionID: UUID(), connectionName: "t", kind: kind, rowLimit: 25)
+        }
+        XCTAssertFalse(tab(.table(schema: "public", name: "component")).showsValuePane)
+        XCTAssertFalse(tab(.sql).showsValuePane)
+    }
+
+    /// The pane belongs to the tab, so the session file keeps one answer for each.
+    @MainActor
+    func testATabCarriesItsPaneIntoTheSession() {
+        let tab = QueryTab(
+            connectionID: UUID(), connectionName: "t",
+            kind: .table(schema: "public", name: "component"), rowLimit: 25)
+        XCTAssertEqual(tab.state.showsValuePane, false)
+        tab.showsValuePane = true
+        XCTAssertEqual(tab.state.showsValuePane, true)
+    }
+
     func testATabStateKnowsItsKind() {
         let table = TabState(bookmarkID: UUID(), schema: "public", table: "component")
         XCTAssertFalse(table.isSQLTab)
