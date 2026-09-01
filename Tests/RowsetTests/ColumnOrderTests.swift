@@ -192,6 +192,64 @@ final class LargeValueTests: XCTestCase {
         XCTAssertFalse(result.rows[0].values[0].isPlaceholder, "a small column keeps its value")
     }
 
+    /// The page itself says which columns are small. The catalog does not: pg_stats reported an
+    /// average of twenty bytes for a column whose values run to fifty kilobytes.
+    func testTheSizesOfThePageSayWhichColumnsAreWorthReading() {
+        let tab = tab([("id", "integer"), ("small", "jsonb"), ("big", "jsonb")])
+        var result = ResultSet()
+        result.columns = [
+            ResultColumn(id: 0, name: "id", typeName: "integer"),
+            ResultColumn(id: 1, name: "small", typeName: "jsonb"),
+            ResultColumn(id: 2, name: "big", typeName: "jsonb"),
+        ]
+        result.rows = [
+            ResultRow(id: 0, values: [
+                DisplayValue.make(text: "1"),
+                DisplayValue.make(text: "40"),
+                DisplayValue.make(text: "900"),
+            ]),
+            ResultRow(id: 1, values: [
+                DisplayValue.make(text: "2"),
+                DisplayValue.make(text: "1900"),
+                DisplayValue.make(text: "53916"),
+            ]),
+        ]
+
+        let worthReading = tab.markCutValues(in: &result)
+        XCTAssertEqual(worthReading, ["small"], "the largest value of the page decides")
+    }
+
+    func testOneLargeValueHoldsTheWholeColumnBack() {
+        let tab = tab([("id", "integer"), ("payload", "jsonb")])
+        var result = ResultSet()
+        result.columns = [
+            ResultColumn(id: 0, name: "id", typeName: "integer"),
+            ResultColumn(id: 1, name: "payload", typeName: "jsonb"),
+        ]
+        result.rows = (0..<3).map { index in
+            ResultRow(id: index, values: [
+                DisplayValue.make(text: "\(index)"),
+                DisplayValue.make(text: index == 2 ? "5000" : "10"),
+            ])
+        }
+
+        XCTAssertTrue(
+            tab.markCutValues(in: &result).isEmpty,
+            "one value over the limit is enough to leave the column alone")
+    }
+
+    func testAColumnOfNullsIsWorthReading() {
+        let tab = tab([("id", "integer"), ("payload", "jsonb")])
+        var result = ResultSet()
+        result.columns = [
+            ResultColumn(id: 0, name: "id", typeName: "integer"),
+            ResultColumn(id: 1, name: "payload", typeName: "jsonb"),
+        ]
+        result.rows = [ResultRow(id: 0, values: [DisplayValue.make(text: "1"), .null])]
+
+        XCTAssertEqual(tab.markCutValues(in: &result), ["payload"], "nothing to hold back")
+    }
+
     func testASizeReadsAtAGlance() {
         XCTAssertEqual(DisplayValue.sizeText(18), "18 B")
         XCTAssertEqual(DisplayValue.sizeText(1024), "1.0 kB")

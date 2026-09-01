@@ -175,27 +175,45 @@ final class QueryTab: Identifiable {
         }
     }
 
+    /// The most bytes a value of one page may hold and still be worth fetching.
+    ///
+    /// A page of a thousand such values is two megabytes, which costs about a second. Anything
+    /// larger stays on the server until you ask for it.
+    static let readableValueSize = 2048
+
     /// Turns the size the server sent into a stand-in the grid can show.
     ///
     /// A large column comes back as a number of bytes. A NULL value has no size, so it stays a
     /// NULL. Everything else becomes a placeholder that says how large the value is, and asks
     /// for the whole row the moment you touch it.
-    func markCutValues(in result: inout ResultSet) {
-        guard cutsLargeValues else { return }
+    ///
+    /// It gives back the columns whose largest value on this page is small enough to fetch after
+    /// all. The catalog cannot answer that: `pg_stats` reports an average of twenty bytes for a
+    /// column whose values run to fifty kilobytes. Only the page itself knows.
+    @discardableResult
+    func markCutValues(in result: inout ResultSet) -> [String] {
+        guard cutsLargeValues else { return [] }
 
-        let largeColumns = Set(
-            result.columns.filter { columnInfo[$0.name]?.isLarge == true }.map(\.id))
-        guard !largeColumns.isEmpty else { return }
+        let largeColumns = result.columns.filter { columnInfo[$0.name]?.isLarge == true }
+        guard !largeColumns.isEmpty else { return [] }
+
+        let largeIDs = Set(largeColumns.map(\.id))
+        var largest: [Int: Int] = [:]
 
         for rowIndex in result.rows.indices {
             for (valueIndex, column) in result.columns.enumerated()
-            where largeColumns.contains(column.id) {
+            where largeIDs.contains(column.id) {
                 guard valueIndex < result.rows[rowIndex].values.count else { continue }
                 let value = result.rows[rowIndex].values[valueIndex]
                 guard !value.isNull, let bytes = Int(value.text) else { continue }
+                largest[column.id] = max(largest[column.id] ?? 0, bytes)
                 result.rows[rowIndex].values[valueIndex] = .placeholder(bytes: bytes)
             }
         }
+
+        return largeColumns
+            .filter { (largest[$0.id] ?? 0) <= Self.readableValueSize }
+            .map(\.name)
     }
 
     /// True when this cell holds only the start of its value.

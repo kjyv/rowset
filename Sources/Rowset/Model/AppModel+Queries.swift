@@ -43,9 +43,12 @@ extension AppModel {
             tab.totalRows = tab.pageOffset + result.rows.count
         }
 
-        tab.markCutValues(in: &result)
+        let smallEnough = tab.markCutValues(in: &result)
         tab.result = result
         saveSession()
+
+        // The sizes of this page say which of those columns are worth reading after all.
+        await fillSmallValues(smallEnough, in: tab)
     }
 
     /// Runs the query again from the first page, and forgets the count.

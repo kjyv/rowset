@@ -233,27 +233,38 @@ table again from the sidebar for that.
 ## Large values
 
 A table of JSON documents and arrays used to crawl. A page of a thousand rows of a table with
-eleven large columns took over six minutes, and the reason was measured rather than guessed.
+eleven large columns took over six minutes.
 
-Postgres keeps a value over about two kilobytes outside the row. To give even the first characters
-of one, it has to fetch and unpack that store, once per value. Reading the value is the whole cost,
-and it has almost nothing to do with how much text comes back:
+Reading such a value is the whole cost. It has almost nothing to do with how much text comes
+back, measured on a thousand cold rows:
 
-| Query, 1000 rows, cold | Time | Text |
+| Query | Time | Text |
 | --- | --- | --- |
 | whole values | over 6 minutes | 2471 KB |
 | first 301 characters of each | 66 s | 1064 KB |
-| size only, never the value | **0.9 s** | 228 KB |
+| size only, never the value | 0.9 s | 228 KB |
 
-So the grid asks for the size and never for the value:
+So the grid asks for the size of a large column and never for the value:
 
 ```sql
-SELECT "created_at", pg_column_size("water_dosage_curve_milliliter")::text AS "…", …
+SELECT "created_at", pg_column_size("vehicle_movement_events")::text AS "…", …
 ```
 
-The cell shows that size in grey, `9.6 kB`, in place of the value. Everything that shows or
-writes a whole value fetches the row first, so a click, the value pane, the row view, an edit and
-a copy all get the real thing. A NULL has no size and stays a NULL.
+### Which columns come back whole
+
+The sizes of the page that just arrived decide, one column at a time. A column whose largest
+value on this page is under two kilobytes is fetched in a second query and fills its cells. Every
+other column keeps a grey stand-in naming its size, such as `9.6 kB`.
+
+**The catalog cannot answer this.** `pg_stats` reported an average width of 20 bytes for a column
+whose values on one page run to 54 kilobytes at a time. Only the page itself knows, and the sizes
+are already there.
+
+One value over the limit holds its whole column back, because the cost is per value read.
+
+The rest arrives when you need it. A click, the value pane, the row view, an edit and a copy all
+fetch the row whole first, so a stand-in is never what you read, edit or copy. A NULL has no size
+and stays a NULL.
 
 **This needs a primary key.** Without one there is no way to ask for a row again, so such a table
 fetches every value as before. The same holds for a table with no large column.

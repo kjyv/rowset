@@ -35,6 +35,71 @@ final class MeasureTests: XCTestCase {
         }
     }
 
+    /// What the catalog already knows about the width of each column.
+    func testTheCatalogKnowsTheWidths() async throws {
+        let table = try XCTUnwrap(ProcessInfo.processInfo.environment["ROWSET_MEASURE_TABLE"])
+        let session = PostgresSession(bookmark: try liveBookmark())
+        try await session.connect()
+        defer { Task { await session.close() } }
+
+        let start = DispatchTime.now()
+        let rows = try await session.queryStrings("""
+            SELECT a.attname, t.typname, coalesce(s.avg_width, -1)::text
+            FROM pg_attribute a
+            JOIN pg_class c ON c.oid = a.attrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_type t ON t.oid = a.atttypid
+            LEFT JOIN pg_stats s
+              ON s.schemaname = n.nspname AND s.tablename = c.relname
+             AND s.attname = a.attname
+            WHERE n.nspname = 'public' AND c.relname = '\(table)' AND a.attnum > 0
+            ORDER BY a.attnum
+            """)
+        let seconds = Double(
+            DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1e9
+
+        print(String(format: "MEASURE catalog widths in %.3fs", seconds))
+        for row in rows {
+            print("MEASURE   \(row[0])  \(row[1])  avg_width=\(row[2])")
+        }
+        XCTAssertFalse(rows.isEmpty)
+    }
+
+    /// Times each large column on its own, each on rows nothing has read.
+    ///
+    /// The average width says these values are small, and reading them still cost minutes. This
+    /// says which column is the cost and how it grows.
+    func testTheCostOfEachLargeColumn() async throws {
+        let table = try XCTUnwrap(ProcessInfo.processInfo.environment["ROWSET_MEASURE_TABLE"])
+        let session = PostgresSession(bookmark: try liveBookmark())
+        try await session.connect()
+        defer { Task { await session.close() } }
+
+        let details = try await columns(session, table: table)
+        let qualified = SQLBuilder.qualifiedName(schema: "public", table: table)
+        var offset = 200_000
+
+        func time(_ label: String, _ select: String) async throws {
+            offset += 3_000
+            let sql = "SELECT \(select) FROM \(qualified) LIMIT 1001 OFFSET \(offset)"
+            let start = DispatchTime.now()
+            let result = try await session.query(sql, maxRows: 1001)
+            let seconds = Double(
+                DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1e9
+            let bytes = result.rows.reduce(0) { total, row in
+                total + row.values.reduce(0) { $0 + $1.text.utf8.count }
+            }
+            print(String(format: "MEASURE %-38@ %.3fs %dKB", label as NSString, seconds, bytes / 1024))
+        }
+
+        print("MEASURE --- one column at a time, 1000 rows each ---")
+        try await time("nothing", "1")
+        for info in details where info.isLarge {
+            try await time(
+                "\(info.name) [\(info.typeName)]", SQLBuilder.quoteIdentifier(info.name))
+        }
+    }
+
     /// The grid query must not read a large value, whatever the page size.
     func testTheGridQueryNeverReadsALargeValue() async throws {
         let table = try XCTUnwrap(ProcessInfo.processInfo.environment["ROWSET_MEASURE_TABLE"])
