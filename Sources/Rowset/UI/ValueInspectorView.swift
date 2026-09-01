@@ -23,6 +23,7 @@ struct ValueInspectorView: View {
     var editing: (tab: QueryTab, address: CellAddress)?
 
     @State private var formatJSON = true
+    @State private var lastEditRequest: EditRequest?
     @State private var findRequest = FindRequest()
     @State private var draft = ""
     @State private var isEditing = false
@@ -41,12 +42,35 @@ struct ValueInspectorView: View {
         }
         // The Return key of the grid asks the pane to start an edit, for a value that has more
         // than one line and does not fit a cell.
-        .onChange(of: editing?.tab.paneEditRequests) { _, _ in
-            guard editing != nil, let value else { return }
+        //
+        // Only a count that goes up is a request. The pane has no cell to write to until you pick
+        // one, so the first cell you pick moves the count from none to zero. Reading that as a
+        // request opened the editor on the first click of every table, and the editor shows the
+        // plain text, neither formatted nor coloured.
+        .onChange(of: editRequest, initial: true) { _, new in
+            let previous = lastEditRequest
+            lastEditRequest = new
+            guard let new, let previous, previous.tab == new.tab, new.count > previous.count,
+                  let value
+            else { return }
             draft = value.isNull ? "" : value.text
             validationMessage = nil
             isEditing = true
         }
+    }
+
+    /// Names one ask for an edit: which tab asked, and how many times it has asked.
+    ///
+    /// The tab belongs in it. A tab switch reuses this view, and the count of the next tab says
+    /// nothing about the count of the last one.
+    struct EditRequest: Equatable {
+        var tab: QueryTab.ID
+        var count: Int
+    }
+
+    private var editRequest: EditRequest? {
+        guard let editing else { return nil }
+        return EditRequest(tab: editing.tab.id, count: editing.tab.paneEditRequests)
     }
 
     private var header: some View {

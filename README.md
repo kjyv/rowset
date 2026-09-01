@@ -436,6 +436,11 @@ whole grid again.
 **The value pane uses `NSTextView`.** SwiftUI lays out a whole string at once, which stalls on a
 large document. `NSTextView` lays out only the part it draws.
 
+**Only a count that goes up asks the pane for an edit.** The pane has no cell to write to until
+you pick one, so the first cell you pick moves that count from none to zero. Reading that as a
+request opened the editor on the first click of every table, and the editor shows the plain text,
+neither formatted nor coloured.
+
 **The value pane sets its text as one attributed string**, so the view never holds a text that is
 half painted. It reads `textStorage` to do it, which is safe: only `layoutManager` moves an
 `NSTextView` back to TextKit 1, and the pane needs TextKit 2 to lay out a large document by the
