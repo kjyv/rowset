@@ -26,11 +26,11 @@ enum SyntaxStyle {
     /// which is still readable.
     static let lengthLimit = 200_000
 
-    /// Paints every token of a text storage, and nothing else.
+    /// Paints every token of a text, and nothing else.
     ///
     /// The caller sets the plain attributes first. This adds only the colours, so a background
     /// band or another attribute set before it stays.
-    static func paint(_ tokens: [SyntaxToken], in storage: NSTextStorage) {
+    static func paint(_ tokens: [SyntaxToken], in storage: NSMutableAttributedString) {
         for token in tokens where token.range.upperBound <= storage.length {
             storage.addAttribute(.foregroundColor, value: color(for: token.kind), range: token.range)
         }

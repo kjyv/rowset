@@ -179,6 +179,21 @@ struct ResultSet: Sendable, Identifiable {
         rows.first { $0.id == id }
     }
 
+    /// The cell one step away from another one, held inside the result.
+    ///
+    /// A step past an edge stops at that edge, so a key at the last row keeps the cell it has.
+    /// `nil` means the result has no such cell at all.
+    func neighbour(of address: CellAddress, rows rowStep: Int, columns columnStep: Int)
+        -> CellAddress? {
+        guard let row = rows.firstIndex(where: { $0.id == address.rowID }),
+              let column = columns.firstIndex(where: { $0.id == address.columnID })
+        else { return nil }
+
+        let nextRow = max(0, min(self.rows.count - 1, row + rowStep))
+        let nextColumn = max(0, min(columns.count - 1, column + columnStep))
+        return CellAddress(rowID: rows[nextRow].id, columnID: columns[nextColumn].id)
+    }
+
     func value(at address: CellAddress) -> DisplayValue? {
         guard let row = row(id: address.rowID),
               let index = columns.firstIndex(where: { $0.id == address.columnID })

@@ -56,6 +56,9 @@ struct ResultTableView: NSViewRepresentable {
         tableView.onShiftReturn = { [weak coordinator] in
             coordinator?.parent.onOpenValue()
         }
+        tableView.onMove = { [weak coordinator] rows, columns, extend in
+            coordinator?.moveSelection(rows: rows, columns: columns, extend: extend)
+        }
 
         tableView.style = .fullWidth
         tableView.rowHeight = Self.rowHeight
@@ -287,6 +290,44 @@ struct ResultTableView: NSViewRepresentable {
                 beginEdit(row: row, column: column, address: address)
             } else {
                 parent.onOpenValue()
+            }
+        }
+
+        /// Moves the picked cell by one, with the keyboard.
+        ///
+        /// `NSTableView` moves its own row selection with the arrow keys. A block of cells is
+        /// this app's own work, so the table never sees these keys.
+        func moveSelection(rows rowStep: Int, columns columnStep: Int, extend: Bool) {
+            let rows = parent.result.rows
+            let columns = parent.result.columns
+            guard !rows.isEmpty, !columns.isEmpty else { return }
+
+            guard let current = parent.selection,
+                  let address = parent.result.neighbour(
+                      of: current.focus, rows: rowStep, columns: columnStep)
+            else {
+                // Nothing is picked yet, so the first key picks the first cell.
+                if let first = address(row: 0, column: 0) {
+                    parent.selection = CellSelection(single: first)
+                }
+                return
+            }
+            guard address != current.focus else { return }
+
+            parent.selection = extend
+                ? CellSelection(anchor: current.anchor, focus: address)
+                : CellSelection(single: address)
+
+            if let row = rows.firstIndex(where: { $0.id == address.rowID }) {
+                tableView?.scrollRowToVisible(row)
+            }
+            if let column = columns.firstIndex(where: { $0.id == address.columnID }) {
+                tableView?.scrollColumnToVisible(column)
+            }
+
+            // A value the grid left on the server has to be whole before it is shown.
+            if parent.editing?.isCut(at: address) == true {
+                Task { await parent.onNeedFullRow(address.rowID) }
             }
         }
 
@@ -920,6 +961,8 @@ final class OverdrawTableView: NSTableView {
     var onSpace: (() -> Void)?
     var onReturn: (() -> Void)?
     var onShiftReturn: (() -> Void)?
+    /// Moves the picked cell. The steps are rows and columns, and the flag grows the block.
+    var onMove: ((Int, Int, Bool) -> Void)?
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -970,6 +1013,11 @@ final class OverdrawTableView: NSTableView {
             return
         }
 
+        if let step = Self.step(for: event), let onMove {
+            onMove(step.rows, step.columns, event.modifierFlags.contains(.shift))
+            return
+        }
+
         if event.keyCode == 36 {
             let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             if modifiers == .shift, onShiftReturn != nil {
@@ -983,6 +1031,32 @@ final class OverdrawTableView: NSTableView {
         }
 
         super.keyDown(with: event)
+    }
+
+    /// The step one key means, in rows and columns.
+    ///
+    /// The arrow keys and the letters of vi both move the cell, because one hand or the other is
+    /// already there. A letter counts on its own or with shift only, so Command-L still belongs
+    /// to whatever else wants it.
+    static func step(for event: NSEvent) -> (rows: Int, columns: Int)? {
+        switch event.keyCode {
+        case 123: return (0, -1)
+        case 124: return (0, 1)
+        case 125: return (1, 0)
+        case 126: return (-1, 0)
+        default: break
+        }
+
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard modifiers.subtracting(.shift).isEmpty else { return nil }
+
+        switch event.charactersIgnoringModifiers?.lowercased() {
+        case "h": return (0, -1)
+        case "l": return (0, 1)
+        case "j": return (1, 0)
+        case "k": return (-1, 0)
+        default: return nil
+        }
     }
 
     override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {

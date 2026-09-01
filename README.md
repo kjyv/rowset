@@ -15,6 +15,7 @@ connection, look at the tables, and read some rows with a filter and a sort.
   **Command-R** fetches the page again.
 - Shows the whole value of the cell you click in a pane under the grid. It formats JSON, colours
   it, and keeps the key order that the server sent.
+- Moves the picked cell with the arrow keys or with `h`, `j`, `k` and `l`. Shift grows the block.
 - Copies a value, a column name, or a whole row from the right click menu of a cell.
 - Changes a value and sends the edits together, after it shows you the SQL.
 - Runs SQL in a console, one statement at a time or all of them, with the words coloured and the
@@ -434,6 +435,11 @@ whole grid again.
 
 **The value pane uses `NSTextView`.** SwiftUI lays out a whole string at once, which stalls on a
 large document. `NSTextView` lays out only the part it draws.
+
+**The value pane sets its text as one attributed string.** The first read of `textStorage` moves
+an `NSTextView` from TextKit 2 back to TextKit 1, and that rebuild threw away colours added right
+after the plain string, so only the second value you clicked came out coloured. The pane asks for
+the storage once while the view is empty, and every value goes in coloured already.
 
 **One token type serves SQL and JSON.** `SQLLexer` and `JSONLexer` both give a `SyntaxToken`, and
 `SyntaxStyle` paints it. The editor and the value pane then share one colour table. A JSON value
