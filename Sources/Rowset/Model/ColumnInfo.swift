@@ -40,4 +40,14 @@ struct ColumnInfo: Hashable, Sendable {
     var isNullable: Bool
 
     var kind: ColumnKind { ColumnKind.of(typeName) }
+
+    /// True when one value of this column can be large enough to be worth leaving on the server.
+    ///
+    /// A grid shows a few hundred characters of a cell. Fetching a JSON document of half a
+    /// megabyte to show three hundred characters of it is the whole cost of opening a wide table.
+    var isLarge: Bool {
+        let name = typeName.lowercased()
+        return name.contains("json") || name == "array" || name == "text"
+            || name == "bytea" || name == "xml"
+    }
 }

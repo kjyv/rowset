@@ -148,6 +148,57 @@ final class QueryTab: Identifiable {
             .map(\.name)
             .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
+
+    /// True when the query may leave the end of a large value on the server.
+    ///
+    /// It needs a key. Without one there is no way to ask for the rest of a row, so the whole
+    /// value has to come with the grid.
+    var cutsLargeValues: Bool {
+        !primaryKey.isEmpty && knownColumns.contains { columnInfo[$0.name]?.isLarge == true }
+    }
+
+    /// The select list of the grid query.
+    ///
+    /// A large column asks for its first characters only. Every other column asks for itself.
+    var selectExpressions: [String] {
+        let names = selectedColumnNames.isEmpty ? knownColumns.map(\.name) : selectedColumnNames
+        guard cutsLargeValues else {
+            return selectedColumnNames.isEmpty ? [] : names.map(SQLBuilder.quoteIdentifier)
+        }
+
+        return names.map { name in
+            guard columnInfo[name]?.isLarge == true else {
+                return SQLBuilder.quoteIdentifier(name)
+            }
+            return SQLBuilder.cutColumn(name, to: DisplayValue.serverCutLength)
+        }
+    }
+
+    /// Marks the values the server cut, so the app knows to ask for the rest.
+    func markCutValues(in result: inout ResultSet) {
+        guard cutsLargeValues else { return }
+
+        let cutColumns = Set(
+            result.columns.filter { columnInfo[$0.name]?.isLarge == true }.map(\.id))
+        guard !cutColumns.isEmpty else { return }
+
+        for rowIndex in result.rows.indices {
+            for (valueIndex, column) in result.columns.enumerated()
+            where cutColumns.contains(column.id) {
+                guard valueIndex < result.rows[rowIndex].values.count else { continue }
+                let value = result.rows[rowIndex].values[valueIndex]
+                guard !value.isNull, value.text.count >= DisplayValue.serverCutLength else {
+                    continue
+                }
+                result.rows[rowIndex].values[valueIndex].isCut = true
+            }
+        }
+    }
+
+    /// True when this cell holds only the start of its value.
+    func isCut(at address: CellAddress) -> Bool {
+        result?.value(at: address)?.isCut ?? false
+    }
     /// The changes you made but have not sent. The grid marks these cells.
     var edits: [CellAddress: String?] = [:]
 

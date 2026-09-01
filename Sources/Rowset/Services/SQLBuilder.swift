@@ -121,9 +121,11 @@ enum SQLBuilder {
         orderBy: String,
         limit: Int,
         offset: Int = 0,
-        columns: [String] = []
+        columns: [String] = [],
+        expressions: [String] = []
     ) -> String {
-        var sql = "SELECT \(columnList(columns)) FROM \(qualifiedName(schema: schema, table: table))"
+        let selectList = expressions.isEmpty ? columnList(columns) : expressionList(expressions)
+        var sql = "SELECT \(selectList) FROM \(qualifiedName(schema: schema, table: table))"
 
         let trimmedFilter = filter.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedFilter.isEmpty {
@@ -200,6 +202,19 @@ enum SQLBuilder {
     static func columnList(_ columns: [String]) -> String {
         guard !columns.isEmpty else { return "*" }
         return columns.map(quoteIdentifier).joined(separator: ", ")
+    }
+
+    /// Asks for the start of a large value and leaves the rest on the server.
+    ///
+    /// The cast to text is what makes one length rule work for a JSON document and for an array
+    /// alike. The name is kept, so the grid sees the column it expects.
+    static func cutColumn(_ name: String, to length: Int) -> String {
+        "left(\(quoteIdentifier(name))::text, \(length)) AS \(quoteIdentifier(name))"
+    }
+
+    /// A ready made select list. Each entry is already SQL.
+    static func expressionList(_ expressions: [String]) -> String {
+        expressions.isEmpty ? "*" : expressions.joined(separator: ", ")
     }
 
     /// Counts the rows a filter matches, for the page widget.

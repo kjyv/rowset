@@ -104,7 +104,11 @@ struct ResultPane: View {
             sortOrder: $tab.sortOrder,
             selection: $tab.selection,
             revealColumn: $tab.revealColumn,
-            onQuickLook: { tab.quickLookRow = $0 },
+            onQuickLook: { rowID in
+                tab.quickLookRow = rowID
+                Task { await model.loadFullRow(rowID, in: tab) }
+            },
+            onNeedFullRow: { await model.loadFullRow($0, in: tab) },
             onOpenValue: { model.isInspectorVisible = true },
             onSortChange: onSortChange,
             editing: editable ? tab : nil)

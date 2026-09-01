@@ -15,6 +15,8 @@ struct ResultTableView: NSViewRepresentable {
     @Binding var revealColumn: String?
     /// Runs when you press the space bar, with the row under the selection.
     var onQuickLook: (Int) -> Void = { _ in }
+    /// Asks for the whole of a row whose large values the server cut.
+    var onNeedFullRow: (Int) async -> Void = { _ in }
     /// Runs when you double click a cell.
     var onOpenValue: () -> Void = {}
     /// Runs when you click a column header. The server does the sorting, so the caller must run
@@ -263,6 +265,11 @@ struct ResultTableView: NSViewRepresentable {
                 parent.selection = CellSelection(single: address)
             }
 
+            // A cut value has to be whole before it is shown or changed.
+            if parent.editing?.isCut(at: address) == true {
+                Task { await parent.onNeedFullRow(address.rowID) }
+            }
+
             guard clickCount >= 2 else { return }
 
             // A value of more than one line does not fit a cell. The pane takes it.
@@ -439,6 +446,15 @@ struct ResultTableView: NSViewRepresentable {
                 return
             }
 
+            // The editor must hold the whole value, or a commit would cut the rest away.
+            if tab.isCut(at: address) {
+                Task { [weak self] in
+                    await self?.parent.onNeedFullRow(address.rowID)
+                    self?.editSelection()
+                }
+                return
+            }
+
             if isMultiline(at: address) {
                 parent.onOpenValue()
                 tab.paneEditRequests += 1
@@ -510,15 +526,38 @@ struct ResultTableView: NSViewRepresentable {
         }
 
         /// Puts the block on the clipboard in every table format.
+        ///
+        /// A cut value is fetched whole first. Copying the first three hundred characters of a
+        /// document and calling it the value would be worse than slow.
         func copySelection(includeHeader: Bool) {
-            guard let block = selectedBlock(includeHeader: includeHeader) else { return }
-            Clipboard.writeTable(block, hasHeader: includeHeader)
+            Task { [weak self] in
+                await self?.fetchCutRowsOfSelection()
+                guard let self, let block = selectedBlock(includeHeader: includeHeader) else {
+                    return
+                }
+                Clipboard.writeTable(block, hasHeader: includeHeader)
+            }
+        }
+
+        private func fetchCutRowsOfSelection() async {
+            guard let selection = parent.selection else { return }
+            for rowID in selection.rows {
+                guard let row = parent.result.row(id: rowID),
+                      row.values.contains(where: \.isCut)
+                else { continue }
+                await parent.onNeedFullRow(rowID)
+            }
         }
 
         /// Puts the block on the clipboard as text only, for a text editor.
         func copySelectionAsText(format: ClipboardFormat, includeHeader: Bool) {
-            guard let block = selectedBlock(includeHeader: includeHeader) else { return }
-            Clipboard.write(ClipboardFormatter.text(block, format: format))
+            Task { [weak self] in
+                await self?.fetchCutRowsOfSelection()
+                guard let self, let block = selectedBlock(includeHeader: includeHeader) else {
+                    return
+                }
+                Clipboard.write(ClipboardFormatter.text(block, format: format))
+            }
         }
 
         private func selectedBlock(includeHeader: Bool) -> [[String]]? {

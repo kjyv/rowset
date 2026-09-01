@@ -230,6 +230,34 @@ There is no way back, on purpose. The statement may end up showing another table
 started on, so a filter field or an edit button would then lie about what is on screen. Open the
 table again from the sidebar for that.
 
+## Large values
+
+A table of JSON documents and arrays used to take half a second to open a page of 25 rows,
+because the whole of every value came down the wire to fill a preview of 300 characters.
+
+The grid now asks the server for the first 301 characters of a large column and leaves the rest
+where it is:
+
+```sql
+SELECT "created_at", left("water_dosage_curve_milliliter"::text, 301) AS "…", …
+```
+
+Measured on a table of 22 columns, 11 of them large, 26 rows:
+
+| Query | Time | Text |
+| --- | --- | --- |
+| whole values | 0.430 s | 3803 KB |
+| first 301 characters | 0.050 s | 69 KB |
+
+The rest is fetched the moment you need it. Selecting the cell, opening the value pane, opening
+the row view, starting an edit and copying all fetch the row whole first, so a cut value is never
+what you read, edit or copy.
+
+**This needs a primary key.** Without one there is no way to ask for the rest of a row, so such a
+table fetches every value as before. The same holds for a table with no large column.
+
+`text`, `json`, `jsonb`, `xml`, `bytea` and every array count as large. `varchar` does not.
+
 ## Reading one whole row
 
 Press **space** on a row. Every column stands under the one before it, with its name and its
@@ -261,7 +289,35 @@ all three make the old count wrong.
 
 The widget is the only place that sets the page size. There is no separate row field any more.
 
-### Reading one whole row
+### Large values
+
+A table of JSON documents and arrays used to take half a second to open a page of 25 rows,
+because the whole of every value came down the wire to fill a preview of 300 characters.
+
+The grid now asks the server for the first 301 characters of a large column and leaves the rest
+where it is:
+
+```sql
+SELECT "created_at", left("water_dosage_curve_milliliter"::text, 301) AS "…", …
+```
+
+Measured on a table of 22 columns, 11 of them large, 26 rows:
+
+| Query | Time | Text |
+| --- | --- | --- |
+| whole values | 0.430 s | 3803 KB |
+| first 301 characters | 0.050 s | 69 KB |
+
+The rest is fetched the moment you need it. Selecting the cell, opening the value pane, opening
+the row view, starting an edit and copying all fetch the row whole first, so a cut value is never
+what you read, edit or copy.
+
+**This needs a primary key.** Without one there is no way to ask for the rest of a row, so such a
+table fetches every value as before. The same holds for a table with no large column.
+
+`text`, `json`, `jsonb`, `xml`, `bytea` and every array count as large. `varchar` does not.
+
+## Reading one whole row
 
 Press **space** on a row. Every column stands under the one before it, with its name and its
 type, so a wide table needs no sideways scrolling to read a single row.

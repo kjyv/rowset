@@ -13,6 +13,10 @@ struct DisplayValue: Hashable, Sendable {
     var isJSON: Bool = false
     /// True when the renderer dropped the end of a very long value.
     var isTruncated: Bool = false
+    /// True when the server sent only the start of the value, and the rest is still there.
+    ///
+    /// The whole row is fetched again the moment you look at it, edit it, or copy it.
+    var isCut: Bool = false
 
     /// The most characters the app keeps for one cell. A row can hold a document, and the grid
     /// must stay fast, so the renderer stops here.
@@ -20,6 +24,12 @@ struct DisplayValue: Hashable, Sendable {
 
     /// The most characters the grid preview shows.
     static let previewLimit = 300
+
+    /// How much of a large value the server sends for the grid.
+    ///
+    /// One more than the preview shows, so a value at this length is known to have more behind
+    /// it. Anything shorter is whole.
+    static let serverCutLength = previewLimit + 1
 
     static let null = DisplayValue(text: "NULL", preview: "NULL", isNull: true)
 

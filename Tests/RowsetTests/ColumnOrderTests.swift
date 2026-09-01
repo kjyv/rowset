@@ -109,3 +109,85 @@ final class ColumnOrderTests: XCTestCase {
         XCTAssertTrue(table.sortsColumnsByName)
     }
 }
+
+@MainActor
+final class LargeValueTests: XCTestCase {
+
+    private func tab(_ types: [(String, String)], key: [String] = ["id"]) -> QueryTab {
+        let tab = QueryTab(
+            connectionID: UUID(), connectionName: "t",
+            kind: .table(schema: "public", name: "truck_data"), rowLimit: 25)
+        tab.primaryKey = key
+        tab.knownColumns = types.enumerated().map {
+            ResultColumn(id: $0.offset, name: $0.element.0, typeName: $0.element.1)
+        }
+        tab.columnInfo = Dictionary(
+            uniqueKeysWithValues: types.map {
+                ($0.0, ColumnInfo(name: $0.0, typeName: $0.1, isNullable: true))
+            })
+        return tab
+    }
+
+    func testWhichTypesCountAsLarge() {
+        func large(_ type: String) -> Bool {
+            ColumnInfo(name: "c", typeName: type, isNullable: true).isLarge
+        }
+        XCTAssertTrue(large("jsonb"))
+        XCTAssertTrue(large("json"))
+        XCTAssertTrue(large("ARRAY"))
+        XCTAssertTrue(large("text"))
+        XCTAssertTrue(large("bytea"))
+        XCTAssertFalse(large("integer"))
+        XCTAssertFalse(large("timestamp with time zone"))
+        XCTAssertFalse(large("character varying"))
+        XCTAssertFalse(large("uuid"))
+    }
+
+    func testALargeColumnAsksForItsStartOnly() {
+        let tab = tab([("id", "integer"), ("payload", "jsonb")])
+        XCTAssertTrue(tab.cutsLargeValues)
+        XCTAssertEqual(tab.selectExpressions, [
+            "\"id\"",
+            "left(\"payload\"::text, 301) AS \"payload\"",
+        ])
+    }
+
+    /// Without a key there is no way to ask for the rest of a row, so nothing may be left behind.
+    func testATableWithoutAKeyAsksForEverything() {
+        let tab = tab([("id", "integer"), ("payload", "jsonb")], key: [])
+        XCTAssertFalse(tab.cutsLargeValues)
+        XCTAssertTrue(tab.selectExpressions.isEmpty, "an empty list means SELECT *")
+    }
+
+    func testATableWithoutALargeColumnAsksForEverything() {
+        let tab = tab([("id", "integer"), ("slug", "character varying")])
+        XCTAssertFalse(tab.cutsLargeValues)
+        XCTAssertTrue(tab.selectExpressions.isEmpty)
+    }
+
+    func testAValueAtTheCutLengthIsMarked() {
+        let tab = tab([("id", "integer"), ("payload", "jsonb")])
+        var result = ResultSet()
+        result.columns = [
+            ResultColumn(id: 0, name: "id", typeName: "integer"),
+            ResultColumn(id: 1, name: "payload", typeName: "jsonb"),
+        ]
+        result.rows = [
+            ResultRow(id: 0, values: [
+                DisplayValue.make(text: "1"),
+                DisplayValue.make(text: String(repeating: "x", count: 301)),
+            ]),
+            ResultRow(id: 1, values: [
+                DisplayValue.make(text: "2"),
+                DisplayValue.make(text: "short"),
+            ]),
+            ResultRow(id: 2, values: [DisplayValue.make(text: "3"), .null]),
+        ]
+
+        tab.markCutValues(in: &result)
+        XCTAssertTrue(result.rows[0].values[1].isCut, "a value at the cut length has more behind")
+        XCTAssertFalse(result.rows[1].values[1].isCut, "a short value is whole")
+        XCTAssertFalse(result.rows[2].values[1].isCut, "a NULL is whole")
+        XCTAssertFalse(result.rows[0].values[0].isCut, "a small column is never cut")
+    }
+}

@@ -27,7 +27,7 @@ extension AppModel {
             orderBy: tab.orderByText,
             limit: tab.rowLimit + 1,
             offset: tab.pageOffset,
-            columns: tab.selectedColumnNames)
+            expressions: tab.selectExpressions)
 
         guard var result = await execute(
             sql, in: tab, connection: connection, expectedColumns: tab.knownColumns)
@@ -43,6 +43,7 @@ extension AppModel {
             tab.totalRows = tab.pageOffset + result.rows.count
         }
 
+        tab.markCutValues(in: &result)
         tab.result = result
         saveSession()
     }
