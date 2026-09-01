@@ -214,6 +214,22 @@ extension AppModel {
         await runPage(of: statement, in: tab, connection: connection)
     }
 
+    /// Fetches the page a console shows again, and forgets the count.
+    ///
+    /// It runs the statement the page belongs to, not the one the caret is in. The grid shows the
+    /// first, and a refresh must bring back what is on screen. A console that has run nothing to
+    /// page runs the statement of the caret instead.
+    func refreshConsole(_ tab: QueryTab) async {
+        tab.totalRows = nil
+        guard let connection = connections[tab.connectionID],
+              let statement = tab.pagedStatement
+        else {
+            await runCurrentStatement(tab)
+            return
+        }
+        await runPage(of: statement, in: tab, connection: connection)
+    }
+
     /// The ORDER BY that a console puts on its wrapper.
     ///
     /// Only a column header writes this, so the name is quoted rather than passed through.

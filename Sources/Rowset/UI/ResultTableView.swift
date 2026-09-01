@@ -1036,9 +1036,12 @@ final class OverdrawTableView: NSTableView {
     /// The step one key means, in rows and columns.
     ///
     /// The arrow keys and the letters of vi both move the cell, because one hand or the other is
-    /// already there. A letter counts on its own or with shift only, so Command-L still belongs
-    /// to whatever else wants it.
+    /// already there. A key counts on its own or with shift only, and shift grows the block.
+    /// Command-L belongs to whatever else wants it, and so does Command-Left.
     static func step(for event: NSEvent) -> (rows: Int, columns: Int)? {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard modifiers.subtracting(.shift).isEmpty else { return nil }
+
         switch event.keyCode {
         case 123: return (0, -1)
         case 124: return (0, 1)
@@ -1046,9 +1049,6 @@ final class OverdrawTableView: NSTableView {
         case 126: return (-1, 0)
         default: break
         }
-
-        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        guard modifiers.subtracting(.shift).isEmpty else { return nil }
 
         switch event.charactersIgnoringModifiers?.lowercased() {
         case "h": return (0, -1)

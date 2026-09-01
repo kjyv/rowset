@@ -150,6 +150,28 @@ final class ValuePaneTests: XCTestCase {
         XCTAssertTrue(text.isEditable, "Return must open the editor")
     }
 
+    /// The row view shows the same value as the pane, so it formats and colours it the same way.
+    func testTheRowViewFormatsAndColoursJSON() throws {
+        let tab = tab()
+        let result = try XCTUnwrap(tab.result)
+        var rowID: Int? = 0
+        let binding = Binding(get: { rowID }, set: { rowID = $0 })
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 540),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = NSHostingView(
+            rootView: RowInspectorSheet(result: result, rowID: binding, onClose: {}))
+        window.orderBack(nil)
+        defer { window.orderOut(nil) }
+        settle(window)
+
+        let text = try XCTUnwrap(textView(in: XCTUnwrap(window.contentView)))
+        XCTAssertTrue(text.string.contains("\n"), "the value must be formatted: \(text.string)")
+        XCTAssertTrue(hasColour(try XCTUnwrap(text.textStorage)), "the value must be coloured")
+        XCTAssertFalse(text.isEditable, "the row view reads and does not write")
+    }
+
     /// True when any part of the text carries a colour of its own.
     private func hasColour(_ storage: NSTextStorage) -> Bool {
         var found = false

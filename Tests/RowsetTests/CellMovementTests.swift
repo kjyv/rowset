@@ -101,6 +101,13 @@ final class CellMovementTests: XCTestCase {
         XCTAssertNil(step(4, "h", [.command, .shift]))
     }
 
+    /// An arrow with Command or Option belongs to whatever else wants it, the same as a letter.
+    func testAnArrowWithAModifierIsNoStep() {
+        XCTAssertNil(step(123, "\u{F702}", .command))
+        XCTAssertNil(step(124, "\u{F703}", .option))
+        XCTAssertNil(step(125, "\u{F701}", .control))
+    }
+
     func testAnotherLetterIsNoStep() {
         XCTAssertNil(step(0, "a"))
         XCTAssertNil(step(1, "s"))

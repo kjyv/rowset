@@ -103,4 +103,31 @@ final class DisplayValueTests: XCTestCase {
         XCTAssertEqual(value.preview, "hello")
         XCTAssertFalse(value.isTruncated)
     }
+
+    // MARK: - What a value says about itself
+
+    func testAJSONColumnReadsAsJSON() {
+        XCTAssertTrue(DisplayValue.make(text: "{}", isJSON: true).readsAsJSON)
+    }
+
+    /// A text column can hold a document, and the pane shows it as one.
+    func testAValueThatStartsWithABraceReadsAsJSON() {
+        XCTAssertTrue(DisplayValue.make(text: #"{"a": 1}"#).readsAsJSON)
+        XCTAssertTrue(DisplayValue.make(text: "  [1, 2]").readsAsJSON)
+        XCTAssertFalse(DisplayValue.make(text: "a plain sentence").readsAsJSON)
+    }
+
+    func testANullOrAStandInIsNotJSON() {
+        XCTAssertFalse(DisplayValue.null.readsAsJSON)
+        XCTAssertFalse(DisplayValue.placeholder(bytes: 4096).readsAsJSON)
+    }
+
+    func testAReadableTextFormatsOnlyJSON() {
+        let json = DisplayValue.make(text: #"{"a":1}"#, isJSON: true)
+        XCTAssertTrue(json.readableText().contains("\n"))
+        XCTAssertEqual(json.readableText(formatted: false), #"{"a":1}"#)
+
+        let plain = DisplayValue.make(text: "one line")
+        XCTAssertEqual(plain.readableText(), "one line")
+    }
 }

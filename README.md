@@ -12,7 +12,7 @@ connection, look at the tables, and read some rows with a filter and a sort.
   `aws rds generate-db-auth-token` at every connect. A password goes into the login keychain.
 - Shows schemas, tables, views, and columns in a tree on the left.
 - Opens a table in a tab. Each tab has a `WHERE` field, sortable columns, and pages.
-  **Command-R** fetches the page again.
+  **Command-R** fetches the page again, in a table tab and in a console.
 - Shows the whole value of the cell you click in a pane under the grid. It formats JSON, colours
   it, and keeps the key order that the server sent.
 - Moves the picked cell with the arrow keys or with `h`, `j`, `k` and `l`. Shift grows the block.
@@ -167,6 +167,10 @@ showed them. Deleting a connection deletes its consoles with it.
 | --- | --- |
 | Command-Return | the statement the caret is in |
 | Shift-Command-Return | every statement, one after the other |
+| Command-R | the statement the page belongs to, again |
+
+Command-R brings back what the grid shows, not what the caret is in. A console that has run
+nothing to page runs the statement of the caret instead.
 
 The statement the caret is in carries a light band, so you always see what Command-Return will
 send.
@@ -290,7 +294,8 @@ every cell filled.
 
 **The second query names the rows by their key.** Running the page query again would not do. A
 SELECT without an ORDER BY promises no order, so a second run can give other rows in another
-order, and the values would land in the wrong cells.
+order, and the values would land in the wrong cells. A page of a thousand rows names a thousand
+keys in one `IN` list, and `aggregated_delivery` fills every cell of such a page in 0.7 s.
 
 The rest arrives when you need it. A click, the value pane, the row view, an edit and a copy all
 fetch the row whole first, so a stand-in is never what you read, edit or copy. A NULL has no size
@@ -312,6 +317,9 @@ type, so a wide table needs no sideways scrolling to read a single row.
 - The **arrow keys** walk to the row above or below.
 - **Space** again, or **Escape**, closes it.
 - **Copy Row** puts the row on the clipboard with its header, in the table formats.
+
+A JSON value is formatted and coloured here as well, in a box of its own that scrolls. The box
+stops at 220 points, so one document does not push the other columns out of the window.
 
 ## Pages
 
@@ -447,7 +455,8 @@ half painted. It reads `textStorage` to do it, which is safe: only `layoutManage
 part it draws.
 
 **One token type serves SQL and JSON.** `SQLLexer` and `JSONLexer` both give a `SyntaxToken`, and
-`SyntaxStyle` paints it. The editor and the value pane then share one colour table. A JSON value
+`SyntaxStyle` paints it. The editor, the value pane and the row view then share one colour table,
+and the last two share `SyntaxTextView` as well. A JSON value
 over 200,000 characters stays plain, because thousands of colour runs make the pane stall.
 
 **The value pane belongs to the tab.** A console opens without it, and a table tab opens with it.

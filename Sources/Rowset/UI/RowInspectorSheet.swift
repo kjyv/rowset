@@ -120,10 +120,31 @@ struct RowInspectorSheet: View {
     }
 }
 
-/// One column of the row, its name over its value.
+/// One column of the row, its name beside its value.
 private struct RowInspectorLine: View {
     let column: ResultColumn
     let value: DisplayValue
+
+    /// The tallest a single value may grow. A formatted document runs to hundreds of lines, and
+    /// one such column would push every other one out of the window.
+    private static let tallestBox: Double = 220
+    private static let lineHeight: Double = 15
+
+    private var text: String { value.readableText() }
+
+    /// True when the value needs a box of its own with a scroller.
+    ///
+    /// A formatted document has line breaks, and so does a text a person typed over several
+    /// lines. Either one runs past the room a line of this list has.
+    private var needsBox: Bool {
+        guard !value.isNull else { return false }
+        return value.readsAsJSON || text.contains("\n")
+    }
+
+    private var boxHeight: Double {
+        let lines = Double(text.reduce(1) { $1 == "\n" ? $0 + 1 : $0 })
+        return min(Self.tallestBox, max(Self.lineHeight * 2, lines * Self.lineHeight + 14))
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -139,13 +160,19 @@ private struct RowInspectorLine: View {
             }
             .frame(width: 170, alignment: .trailing)
 
-            Text(value.isNull ? "NULL" : value.text)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(value.isNull ? .secondary : .primary)
-                .italic(value.isNull)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .lineLimit(12)
+            if needsBox {
+                SyntaxTextView(text: text, isJSON: value.readsAsJSON)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: boxHeight)
+            } else {
+                Text(value.isNull ? "NULL" : text)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(value.isNull ? .secondary : .primary)
+                    .italic(value.isNull)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .lineLimit(12)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 6)

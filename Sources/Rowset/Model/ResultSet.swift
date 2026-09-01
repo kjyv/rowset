@@ -36,6 +36,22 @@ struct DisplayValue: Hashable, Sendable {
             isCut: true, isPlaceholder: true, bytes: bytes)
     }
 
+    /// True when this value reads as JSON, by the type of its column or by its own shape.
+    ///
+    /// The grid, the value pane and the row view all ask this, and one rule keeps their answers
+    /// together. A stand-in holds a size, which is neither.
+    var readsAsJSON: Bool {
+        if isJSON { return true }
+        guard !isNull, !isPlaceholder else { return false }
+        return JSONPrettyPrinter.looksLikeJSON(text)
+    }
+
+    /// The value as a reader sees it. JSON is formatted, unless the caller says not to.
+    func readableText(formatted: Bool = true) -> String {
+        guard formatted, readsAsJSON else { return text }
+        return JSONPrettyPrinter.format(text) ?? text
+    }
+
     /// A size a person can read at a glance.
     static func sizeText(_ bytes: Int) -> String {
         if bytes < 1024 { return "\(bytes) B" }

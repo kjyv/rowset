@@ -156,11 +156,7 @@ struct ValueInspectorView: View {
         .background(.bar)
     }
 
-    private var isJSON: Bool {
-        if value?.isJSON == true { return true }
-        guard let text = value?.text, value?.isNull == false else { return false }
-        return JSONPrettyPrinter.looksLikeJSON(text)
-    }
+    private var isJSON: Bool { value?.readsAsJSON == true }
 
     private func applyEdit() {
         guard let editing else { return }
@@ -187,7 +183,7 @@ struct ValueInspectorView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ValueTextView(
+                SyntaxTextView(
                     text: displayText(for: value), isJSON: isJSON, findRequest: findRequest)
             }
         } else {
@@ -198,97 +194,9 @@ struct ValueInspectorView: View {
     }
 
     private func displayText(for value: DisplayValue) -> String {
-        guard formatJSON, isJSON else { return value.text }
-        return JSONPrettyPrinter.format(value.text) ?? value.text
+        value.readableText(formatted: formatJSON)
     }
 }
-
-/// A read-only scrolling text area with the standard find bar.
-///
-/// It uses `NSTextView` and not `Text` in a `ScrollView`. SwiftUI lays out the whole string at
-/// once, which stalls on a large document. `NSTextView` lays out only what it draws, and it also
-/// brings the find bar that Command-F opens.
-private struct ValueTextView: NSViewRepresentable {
-    let text: String
-    /// True when the text is JSON, which the view then colours.
-    let isJSON: Bool
-    let findRequest: FindRequest
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSTextView.scrollableTextView()
-        scrollView.hasVerticalScroller = true
-        scrollView.autohidesScrollers = true
-        scrollView.drawsBackground = false
-
-        guard let textView = scrollView.documentView as? NSTextView else { return scrollView }
-        textView.isEditable = false
-        textView.isSelectable = true
-        textView.drawsBackground = false
-        textView.font = SyntaxStyle.font
-        textView.textContainerInset = NSSize(width: 6, height: 6)
-        textView.isAutomaticQuoteSubstitutionEnabled = false
-        textView.isGrammarCheckingEnabled = false
-        textView.isContinuousSpellCheckingEnabled = false
-        // The find bar belongs to NSTextView. It gives search, next, previous, and a match count.
-        textView.usesFindBar = true
-        textView.isIncrementalSearchingEnabled = true
-        context.coordinator.textView = textView
-        return scrollView
-    }
-
-    func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard let textView = scrollView.documentView as? NSTextView else { return }
-        context.coordinator.textView = textView
-
-        if textView.string != text || context.coordinator.paintedJSON != isJSON {
-            textView.textStorage?.setAttributedString(painted())
-            context.coordinator.paintedJSON = isJSON
-            textView.scroll(.zero)
-        }
-
-        if context.coordinator.lastFindCounter != findRequest.counter {
-            context.coordinator.lastFindCounter = findRequest.counter
-            context.coordinator.showFindBar()
-        }
-    }
-
-    /// The text with its colours, built in one piece.
-    ///
-    /// The whole string goes in at once, so the view never holds a text that is half painted.
-    /// Reading `textStorage` is safe here: only `layoutManager` moves an `NSTextView` back to
-    /// TextKit 1, and this pane needs TextKit 2 to lay out a large document by the part it draws.
-    ///
-    /// A cell can hold a large document, so a long one stays plain. `SyntaxStyle.lengthLimit`
-    /// says where that starts.
-    private func painted() -> NSAttributedString {
-        let result = NSMutableAttributedString(
-            string: text,
-            attributes: [.font: SyntaxStyle.font, .foregroundColor: NSColor.labelColor])
-        if isJSON, result.length <= SyntaxStyle.lengthLimit {
-            SyntaxStyle.paint(JSONLexer.tokens(in: text), in: result)
-        }
-        return result
-    }
-
-    @MainActor
-    final class Coordinator {
-        weak var textView: NSTextView?
-        var lastFindCounter = 0
-        /// Whether the text now in the view was painted as JSON.
-        var paintedJSON: Bool?
-
-        func showFindBar() {
-            guard let textView else { return }
-            textView.window?.makeFirstResponder(textView)
-            let item = NSMenuItem()
-            item.tag = NSTextFinder.Action.showFindInterface.rawValue
-            textView.performTextFinderAction(item)
-        }
-    }
-}
-
 
 /// A text area you can type in. The value pane uses it for a value of more than one line, which
 /// does not fit a cell of the grid.

@@ -47,6 +47,15 @@ struct SQLTabView: View {
 
                 Divider().frame(height: 16)
 
+                Button {
+                    Task { await model.refreshConsole(tab) }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .keyboardShortcut("r", modifiers: .command)
+                .disabled(tab.isRunning)
+                .help("Fetch this page again (Command-R)")
+
                 InspectorToggle(tab: tab)
 
                 Spacer()
