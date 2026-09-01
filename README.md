@@ -232,29 +232,31 @@ table again from the sidebar for that.
 
 ## Large values
 
-A table of JSON documents and arrays used to take half a second to open a page of 25 rows,
-because the whole of every value came down the wire to fill a preview of 300 characters.
+A table of JSON documents and arrays used to crawl. A page of a thousand rows of a table with
+eleven large columns took over six minutes, and the reason was measured rather than guessed.
 
-The grid now asks the server for the first 301 characters of a large column and leaves the rest
-where it is:
+Postgres keeps a value over about two kilobytes outside the row. To give even the first characters
+of one, it has to fetch and unpack that store, once per value. Reading the value is the whole cost,
+and it has almost nothing to do with how much text comes back:
+
+| Query, 1000 rows, cold | Time | Text |
+| --- | --- | --- |
+| whole values | over 6 minutes | 2471 KB |
+| first 301 characters of each | 66 s | 1064 KB |
+| size only, never the value | **0.9 s** | 228 KB |
+
+So the grid asks for the size and never for the value:
 
 ```sql
-SELECT "created_at", left("water_dosage_curve_milliliter"::text, 301) AS "…", …
+SELECT "created_at", pg_column_size("water_dosage_curve_milliliter")::text AS "…", …
 ```
 
-Measured on a table of 22 columns, 11 of them large, 26 rows:
+The cell shows that size in grey, `9.6 kB`, in place of the value. Everything that shows or
+writes a whole value fetches the row first, so a click, the value pane, the row view, an edit and
+a copy all get the real thing. A NULL has no size and stays a NULL.
 
-| Query | Time | Text |
-| --- | --- | --- |
-| whole values | 0.430 s | 3803 KB |
-| first 301 characters | 0.050 s | 69 KB |
-
-The rest is fetched the moment you need it. Selecting the cell, opening the value pane, opening
-the row view, starting an edit and copying all fetch the row whole first, so a cut value is never
-what you read, edit or copy.
-
-**This needs a primary key.** Without one there is no way to ask for the rest of a row, so such a
-table fetches every value as before. The same holds for a table with no large column.
+**This needs a primary key.** Without one there is no way to ask for a row again, so such a table
+fetches every value as before. The same holds for a table with no large column.
 
 `text`, `json`, `jsonb`, `xml`, `bytea` and every array count as large. `varchar` does not.
 

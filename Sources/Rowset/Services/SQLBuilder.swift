@@ -204,12 +204,15 @@ enum SQLBuilder {
         return columns.map(quoteIdentifier).joined(separator: ", ")
     }
 
-    /// Asks for the start of a large value and leaves the rest on the server.
+    /// Asks for the size of a large value and never for the value.
     ///
-    /// The cast to text is what makes one length rule work for a JSON document and for an array
-    /// alike. The name is kept, so the grid sees the column it expects.
-    static func cutColumn(_ name: String, to length: Int) -> String {
-        "left(\(quoteIdentifier(name))::text, \(length)) AS \(quoteIdentifier(name))"
+    /// Reading the value is the whole cost. Postgres keeps a value over about two kilobytes
+    /// outside the row, and it has to fetch and unpack that store to give even the first
+    /// characters. `pg_column_size` reads the pointer instead, which costs nothing.
+    ///
+    /// The name is kept, so the grid sees the column it expects.
+    static func sizeOfColumn(_ name: String) -> String {
+        "pg_column_size(\(quoteIdentifier(name)))::text AS \(quoteIdentifier(name))"
     }
 
     /// A ready made select list. Each entry is already SQL.

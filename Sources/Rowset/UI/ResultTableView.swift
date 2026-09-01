@@ -737,6 +737,9 @@ final class GridRowView: NSTableRowView {
         [.font: italicFont, .foregroundColor: NSColor.secondaryLabelColor]
     private static let rawAttributes: [NSAttributedString.Key: Any] =
         [.font: font, .foregroundColor: NSColor.systemOrange]
+    /// A value the grid never fetched. Its size stands in for it, quietly.
+    private static let placeholderAttributes: [NSAttributedString.Key: Any] =
+        [.font: italicFont, .foregroundColor: NSColor.tertiaryLabelColor]
 
     private static let leftInset: CGFloat = 6
     private static let rightInset: CGFloat = 7
@@ -805,9 +808,16 @@ final class GridRowView: NSTableRowView {
             let text = value.isNull ? "NULL" : value.preview
             guard !text.isEmpty else { continue }
 
-            let attributes = value.isNull
-                ? Self.nullAttributes
-                : (value.isRaw ? Self.rawAttributes : Self.normalAttributes)
+            let attributes: [NSAttributedString.Key: Any]
+            if value.isNull {
+                attributes = Self.nullAttributes
+            } else if value.isPlaceholder {
+                attributes = Self.placeholderAttributes
+            } else if value.isRaw {
+                attributes = Self.rawAttributes
+            } else {
+                attributes = Self.normalAttributes
+            }
 
             guard let line = Self.line(for: text, attributes: attributes, width: available)
             else { continue }

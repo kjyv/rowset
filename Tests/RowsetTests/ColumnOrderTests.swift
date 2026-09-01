@@ -143,12 +143,13 @@ final class LargeValueTests: XCTestCase {
         XCTAssertFalse(large("uuid"))
     }
 
-    func testALargeColumnAsksForItsStartOnly() {
+    /// Reading a large value is the whole cost, so the query asks for its size instead.
+    func testALargeColumnAsksForItsSizeOnly() {
         let tab = tab([("id", "integer"), ("payload", "jsonb")])
         XCTAssertTrue(tab.cutsLargeValues)
         XCTAssertEqual(tab.selectExpressions, [
             "\"id\"",
-            "left(\"payload\"::text, 301) AS \"payload\"",
+            "pg_column_size(\"payload\")::text AS \"payload\"",
         ])
     }
 
@@ -165,7 +166,7 @@ final class LargeValueTests: XCTestCase {
         XCTAssertTrue(tab.selectExpressions.isEmpty)
     }
 
-    func testAValueAtTheCutLengthIsMarked() {
+    func testASizeBecomesAPlaceholder() {
         let tab = tab([("id", "integer"), ("payload", "jsonb")])
         var result = ResultSet()
         result.columns = [
@@ -174,20 +175,27 @@ final class LargeValueTests: XCTestCase {
         ]
         result.rows = [
             ResultRow(id: 0, values: [
-                DisplayValue.make(text: "1"),
-                DisplayValue.make(text: String(repeating: "x", count: 301)),
+                DisplayValue.make(text: "1"), DisplayValue.make(text: "9818"),
             ]),
-            ResultRow(id: 1, values: [
-                DisplayValue.make(text: "2"),
-                DisplayValue.make(text: "short"),
-            ]),
-            ResultRow(id: 2, values: [DisplayValue.make(text: "3"), .null]),
+            ResultRow(id: 1, values: [DisplayValue.make(text: "2"), .null]),
         ]
 
         tab.markCutValues(in: &result)
-        XCTAssertTrue(result.rows[0].values[1].isCut, "a value at the cut length has more behind")
-        XCTAssertFalse(result.rows[1].values[1].isCut, "a short value is whole")
-        XCTAssertFalse(result.rows[2].values[1].isCut, "a NULL is whole")
-        XCTAssertFalse(result.rows[0].values[0].isCut, "a small column is never cut")
+
+        let placeholder = result.rows[0].values[1]
+        XCTAssertTrue(placeholder.isPlaceholder)
+        XCTAssertTrue(placeholder.isCut, "a click has to fetch the value behind it")
+        XCTAssertEqual(placeholder.text, "9.6 kB")
+
+        XCTAssertTrue(result.rows[1].values[1].isNull, "a NULL has no size and stays a NULL")
+        XCTAssertFalse(result.rows[1].values[1].isCut)
+        XCTAssertFalse(result.rows[0].values[0].isPlaceholder, "a small column keeps its value")
+    }
+
+    func testASizeReadsAtAGlance() {
+        XCTAssertEqual(DisplayValue.sizeText(18), "18 B")
+        XCTAssertEqual(DisplayValue.sizeText(1024), "1.0 kB")
+        XCTAssertEqual(DisplayValue.sizeText(9818), "9.6 kB")
+        XCTAssertEqual(DisplayValue.sizeText(3 * 1024 * 1024), "3.0 MB")
     }
 }

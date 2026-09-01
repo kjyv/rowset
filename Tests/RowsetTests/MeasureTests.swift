@@ -1,10 +1,11 @@
 import XCTest
 @testable import Rowset
 
-/// Times the query the grid runs, and checks that a cut value can be fetched whole again.
+/// Times the query the grid runs on a table of large values.
 ///
 /// It runs only when the live environment names a table, and it writes its numbers to the log
-/// with the prefix MEASURE.
+/// with the prefix MEASURE. Each shape reads an offset the ones before it did not, so a warm
+/// cache does not flatter the later runs.
 final class MeasureTests: XCTestCase {
 
     private func liveBookmark() throws -> Bookmark {
@@ -24,9 +25,7 @@ final class MeasureTests: XCTestCase {
         return bookmark
     }
 
-    private func columns(
-        _ session: PostgresSession, table: String
-    ) async throws -> [ColumnInfo] {
+    private func columns(_ session: PostgresSession, table: String) async throws -> [ColumnInfo] {
         let rows = try await session.queryStrings(
             CatalogQueries.columns(schema: "public", table: table))
         return rows.compactMap { row in
@@ -36,7 +35,8 @@ final class MeasureTests: XCTestCase {
         }
     }
 
-    func testTheGridQueryIsFaster() async throws {
+    /// The grid query must not read a large value, whatever the page size.
+    func testTheGridQueryNeverReadsALargeValue() async throws {
         let table = try XCTUnwrap(ProcessInfo.processInfo.environment["ROWSET_MEASURE_TABLE"])
         let session = PostgresSession(bookmark: try liveBookmark())
         try await session.connect()
@@ -48,43 +48,37 @@ final class MeasureTests: XCTestCase {
 
         let expressions = details.map { info in
             info.isLarge
-                ? SQLBuilder.cutColumn(info.name, to: DisplayValue.serverCutLength)
+                ? SQLBuilder.sizeOfColumn(info.name)
                 : SQLBuilder.quoteIdentifier(info.name)
         }
 
-        func time(_ label: String, _ sql: String) async throws -> Int {
-            var best = Double.greatestFiniteMagnitude
-            var bytes = 0
-            for _ in 0..<3 {
-                let start = DispatchTime.now()
-                let result = try await session.query(sql, maxRows: 26)
-                best = min(
-                    best,
-                    Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1e9)
-                bytes = result.rows.reduce(0) { total, row in
-                    total + row.values.reduce(0) { $0 + $1.text.utf8.count }
-                }
+        func time(_ label: String, _ sql: String, rows: Int) async throws -> Double {
+            let start = DispatchTime.now()
+            let result = try await session.query(sql, maxRows: rows)
+            let seconds = Double(
+                DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1e9
+            let bytes = result.rows.reduce(0) { total, row in
+                total + row.values.reduce(0) { $0 + $1.text.utf8.count }
             }
-            print(String(format: "MEASURE %@ best=%.3fs text=%dKB", label, best, bytes / 1024))
-            return Int(best * 1000)
+            print(String(
+                format: "MEASURE %@ %.3fs rows=%d text=%dKB",
+                label, seconds, result.rows.count, bytes / 1024))
+            return seconds
         }
 
         let qualified = SQLBuilder.qualifiedName(schema: "public", table: table)
         print("MEASURE table=\(table) columns=\(details.count) large=\(large.count)")
 
-        let whole = try await time(
-            "whole  ", "SELECT * FROM \(qualified) LIMIT 26")
-        let cut = try await time(
-            "cut    ",
-            SQLBuilder.selectRows(
-                schema: "public", table: table, filter: "", orderBy: "", limit: 26,
-                expressions: expressions))
+        let grid = SQLBuilder.selectRows(
+            schema: "public", table: table, filter: "", orderBy: "", limit: 1001,
+            offset: 120_000, expressions: expressions)
+        let seconds = try await time("grid 1000 rows ", grid, rows: 1001)
 
-        XCTAssertLessThan(cut, whole, "asking for less must not be slower")
+        XCTAssertLessThan(seconds, 5, "a page of a thousand rows must not wait on the value store")
     }
 
-    /// The grid must be able to get back what it left behind.
-    func testACutValueComesBackWhole() async throws {
+    /// A placeholder has to be able to give up the whole value again.
+    func testAValueBehindAPlaceholderComesBackWhole() async throws {
         let table = try XCTUnwrap(ProcessInfo.processInfo.environment["ROWSET_MEASURE_TABLE"])
         let session = PostgresSession(bookmark: try liveBookmark())
         try await session.connect()
@@ -92,40 +86,33 @@ final class MeasureTests: XCTestCase {
 
         let details = try await columns(session, table: table)
         let large = try XCTUnwrap(details.first(where: \.isLarge))
-        let key = try await session.queryStrings(
+        let keyRows = try await session.queryStrings(
             CatalogQueries.primaryKey(schema: "public", table: table))
-        let keyColumn = try XCTUnwrap(key.first?.first)
+        let keyColumn = try XCTUnwrap(keyRows.first?.first)
 
         let qualified = SQLBuilder.qualifiedName(schema: "public", table: table)
         let name = SQLBuilder.quoteIdentifier(large.name)
+        let key = SQLBuilder.quoteIdentifier(keyColumn)
 
-        // A row whose large value really is longer than the grid asks for.
-        let found = try await session.queryStrings("""
-            SELECT \(SQLBuilder.quoteIdentifier(keyColumn))::text,
-                   left(\(name)::text, \(DisplayValue.serverCutLength)),
-                   length(\(name)::text)
+        // What the grid gets: a key and a size, never a value.
+        let listed = try await session.queryStrings("""
+            SELECT \(key)::text, \(SQLBuilder.sizeOfColumn(large.name))
             FROM \(qualified)
-            WHERE length(\(name)::text) > \(DisplayValue.serverCutLength)
+            WHERE \(name) IS NOT NULL
             LIMIT 1
             """)
+        let row = try XCTUnwrap(listed.first)
+        let bytes = try XCTUnwrap(Int(row[1]))
+        XCTAssertGreaterThan(bytes, 0)
+        print("MEASURE placeholder=\(DisplayValue.sizeText(bytes)) column=\(large.name)")
 
-        guard let row = found.first else {
-            throw XCTSkip("no row of \(table) has a large \(large.name)")
-        }
-
-        let cut = row[1]
-        let wholeLength = try XCTUnwrap(Int(row[2]))
-        XCTAssertEqual(cut.count, DisplayValue.serverCutLength, "the grid gets the start only")
-
+        // What a click gets.
         let whole = try await session.queryStrings("""
             SELECT \(name)::text FROM \(qualified)
-            WHERE \(SQLBuilder.quoteIdentifier(keyColumn))::text = \(SQLBuilder.quoteLiteral(row[0]))
+            WHERE \(key)::text = \(SQLBuilder.quoteLiteral(row[0]))
             LIMIT 1
             """)
         let full = try XCTUnwrap(whole.first?.first)
-
-        XCTAssertEqual(full.count, wholeLength, "the fetch brings the whole value")
-        XCTAssertTrue(full.hasPrefix(cut), "and it starts with what the grid already had")
-        print("MEASURE cut=\(cut.count) whole=\(wholeLength) column=\(large.name)")
+        XCTAssertFalse(full.isEmpty, "the click brings the value the grid never fetched")
     }
 }

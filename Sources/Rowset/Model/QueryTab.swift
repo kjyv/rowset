@@ -159,7 +159,8 @@ final class QueryTab: Identifiable {
 
     /// The select list of the grid query.
     ///
-    /// A large column asks for its first characters only. Every other column asks for itself.
+    /// A large column asks for its size and never for its value. Every other column asks for
+    /// itself.
     var selectExpressions: [String] {
         let names = selectedColumnNames.isEmpty ? knownColumns.map(\.name) : selectedColumnNames
         guard cutsLargeValues else {
@@ -170,27 +171,29 @@ final class QueryTab: Identifiable {
             guard columnInfo[name]?.isLarge == true else {
                 return SQLBuilder.quoteIdentifier(name)
             }
-            return SQLBuilder.cutColumn(name, to: DisplayValue.serverCutLength)
+            return SQLBuilder.sizeOfColumn(name)
         }
     }
 
-    /// Marks the values the server cut, so the app knows to ask for the rest.
+    /// Turns the size the server sent into a stand-in the grid can show.
+    ///
+    /// A large column comes back as a number of bytes. A NULL value has no size, so it stays a
+    /// NULL. Everything else becomes a placeholder that says how large the value is, and asks
+    /// for the whole row the moment you touch it.
     func markCutValues(in result: inout ResultSet) {
         guard cutsLargeValues else { return }
 
-        let cutColumns = Set(
+        let largeColumns = Set(
             result.columns.filter { columnInfo[$0.name]?.isLarge == true }.map(\.id))
-        guard !cutColumns.isEmpty else { return }
+        guard !largeColumns.isEmpty else { return }
 
         for rowIndex in result.rows.indices {
             for (valueIndex, column) in result.columns.enumerated()
-            where cutColumns.contains(column.id) {
+            where largeColumns.contains(column.id) {
                 guard valueIndex < result.rows[rowIndex].values.count else { continue }
                 let value = result.rows[rowIndex].values[valueIndex]
-                guard !value.isNull, value.text.count >= DisplayValue.serverCutLength else {
-                    continue
-                }
-                result.rows[rowIndex].values[valueIndex].isCut = true
+                guard !value.isNull, let bytes = Int(value.text) else { continue }
+                result.rows[rowIndex].values[valueIndex] = .placeholder(bytes: bytes)
             }
         }
     }

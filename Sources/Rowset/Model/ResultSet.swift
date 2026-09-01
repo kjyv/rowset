@@ -13,10 +13,12 @@ struct DisplayValue: Hashable, Sendable {
     var isJSON: Bool = false
     /// True when the renderer dropped the end of a very long value.
     var isTruncated: Bool = false
-    /// True when the server sent only the start of the value, and the rest is still there.
+    /// True when the server sent no value at all, only its size.
     ///
-    /// The whole row is fetched again the moment you look at it, edit it, or copy it.
+    /// The whole row is fetched the moment you look at it, edit it, or copy it.
     var isCut: Bool = false
+    /// True when the text is a stand-in for a value that was never fetched.
+    var isPlaceholder: Bool = false
 
     /// The most characters the app keeps for one cell. A row can hold a document, and the grid
     /// must stay fast, so the renderer stops here.
@@ -25,11 +27,21 @@ struct DisplayValue: Hashable, Sendable {
     /// The most characters the grid preview shows.
     static let previewLimit = 300
 
-    /// How much of a large value the server sends for the grid.
-    ///
-    /// One more than the preview shows, so a value at this length is known to have more behind
-    /// it. Anything shorter is whole.
-    static let serverCutLength = previewLimit + 1
+    /// A stand-in for a value the grid did not fetch, naming how large it is.
+    static func placeholder(bytes: Int) -> DisplayValue {
+        DisplayValue(
+            text: sizeText(bytes), preview: sizeText(bytes),
+            isCut: true, isPlaceholder: true)
+    }
+
+    /// A size a person can read at a glance.
+    static func sizeText(_ bytes: Int) -> String {
+        if bytes < 1024 { return "\(bytes) B" }
+        if bytes < 1024 * 1024 {
+            return String(format: "%.1f kB", Double(bytes) / 1024)
+        }
+        return String(format: "%.1f MB", Double(bytes) / (1024 * 1024))
+    }
 
     static let null = DisplayValue(text: "NULL", preview: "NULL", isNull: true)
 
