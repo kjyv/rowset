@@ -119,9 +119,11 @@ struct InspectorToggle: View {
         Button {
             model.isInspectorVisible.toggle()
         } label: {
+            // The icon shows what the button does, not what the pane is doing. A filled band
+            // means the click brings the pane, and a plain rectangle means it takes it away.
             Image(systemName: model.isInspectorVisible
-                  ? "rectangle.bottomthird.inset.filled"
-                  : "rectangle")
+                  ? "rectangle"
+                  : "rectangle.bottomthird.inset.filled")
         }
         .buttonStyle(.borderless)
         .help(model.isInspectorVisible ? "Hide the value pane" : "Show the value pane")
