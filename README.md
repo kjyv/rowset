@@ -181,20 +181,6 @@ lexer reports each of those as one piece, and the rule only looks between pieces
 **Run All** stops at the first failure and leaves the result of the last statement on screen. The
 statements do not share a transaction, which is what a console does.
 
-### Why a lexer and not tree-sitter
-
-`SQLLexer` reads the text once into keywords, names, strings, numbers, parameters, comments and
-punctuation. That one pass serves both jobs:
-
-- **Colouring** needs to know what each piece is.
-- **Splitting statements** needs to know which semicolons are real. A split on every semicolon is
-  wrong, because one also sits inside a string, inside a quoted name, inside a comment and inside
-  a dollar quoted function body.
-
-Neither job asks what the words mean, so a grammar would add a build dependency and buy nothing.
-A parser earns its place only for colouring by meaning, such as marking a table apart from a
-column.
-
 ### From a table to a console
 
 The terminal button beside the value pane button turns a table tab into a console on the query it
@@ -222,74 +208,16 @@ table again from the sidebar for that.
 ## Large values
 
 A column of JSON documents or arrays is what makes a wide table slow to open. Reading one such
-value is the whole cost, and that cost has almost nothing to do with how much text comes back.
+value costs far more than sending its text, so the grid asks the server for the size of that
+column instead, and then reads the values the page can afford.
 
-Measured on a thousand cold rows of a table with eleven large columns:
+A value left on the server shows a grey stand-in naming its size, such as `9.6 kB`. It arrives
+whole the moment you touch it: a click, the value pane, the row view, an edit and a copy all fetch
+the row first, so a stand-in is never what you read, edit or copy. A NULL has no size and stays a
+NULL.
 
-| Query | Time | Text |
-| --- | --- | --- |
-| whole values | over 6 minutes | 2471 KB |
-| first 301 characters of each | 66 s | 1064 KB |
-| size only, never the value | 0.9 s | 228 KB |
-
-So the grid asks for the size of a large column and never for the value:
-
-```sql
-SELECT "created_at", pg_column_size("vehicle_movement_events")::text AS "…", …
-```
-
-### Which columns come back whole
-
-Two rules decide, in this order.
-
-**First the declared type**, before any row is read. `text`, `json`, `jsonb`, `xml`, `bytea` and
-every array count as large. A `character varying` counts as large only when its declaration sets
-no length, or a length over two kilobytes. An unbounded `varchar` is the same as a `text` inside
-Postgres and can hold megabytes, so its name alone says nothing.
-
-This first rule is deliberately pessimistic. It cannot know what the rows hold, so it asks for the
-size of every column that could be large. A `text` column of tiny values costs one extra round
-trip and never a slow query.
-
-**Then the sizes of the page that just arrived.** Postgres keeps a value of two kilobytes or less
-in the row itself, and moves a larger one to the value store beside the table. The row is read
-anyway, so an inline value costs nothing, and only a value in the store costs a second lookup.
-
-So each column is priced by the bytes it holds **in the store** on this page. The page has a
-budget of 256 kB. The cheapest column goes first, then the next, until the budget is spent. A
-column whose values all fit in their rows costs nothing and always comes back. Every column left
-over keeps a grey stand-in naming its size, such as `9.6 kB`.
-
-**The catalog cannot answer this.** `pg_stats` reported an average width of 20 bytes for a column
-whose values on one page run to 54 kilobytes at a time. Only the page itself knows, and the sizes
-are already there.
-
-Measured on `truck_data`, 22 columns and 11 of them large:
-
-| Page | Opens in | Left in the store |
-| --- | --- | --- |
-| 50 rows | 0.6 s | 1.1 MB, 7 columns |
-| 1000 rows | 1.1 s | 28.4 MB, 10 columns |
-
-A page of `aggregated_delivery`, whose `batches_info` holds 1.3 kB at most, opens in 0.2 s with
-every cell filled.
-
-**The second query names the rows by their key.** Running the page query again would not do. A
-SELECT without an ORDER BY promises no order, so a second run can give other rows in another
-order, and the values would land in the wrong cells. A page of a thousand rows names a thousand
-keys in one `IN` list, and `aggregated_delivery` fills every cell of such a page in 0.7 s.
-
-The rest arrives when you need it. A click, the value pane, the row view, an edit and a copy all
-fetch the row whole first, so a stand-in is never what you read, edit or copy. A NULL has no size
-and stays a NULL.
-
-**This needs a primary key.** Without one there is no way to ask for a row again, so such a table
-fetches every value as before. The same holds for a table with no large column.
-
-**A key column always comes back whole**, whatever its type. Its value is what finds the row
-again, both to fetch the rest of the page and to open one row on a click. A key of type `text`, or
-of an unbounded `varchar`, would otherwise be replaced by its own size and leave the page with no
-key at all.
+This needs a primary key, which is what asks for a row again. A table without one fetches every
+value with the page, and so does a table with no large column.
 
 ## Reading one whole row
 
@@ -438,9 +366,9 @@ half painted. It reads `textStorage` to do it, which is safe: only `layoutManage
 part it draws.
 
 **One token type serves SQL and JSON.** `SQLLexer` and `JSONLexer` both give a `SyntaxToken`, and
-`SyntaxStyle` paints it. The editor, the value pane and the row view then share one colour table,
-and the last two share `SyntaxTextView` as well. A JSON value
-over 200,000 characters stays plain, because thousands of colour runs make the pane stall.
+`SyntaxStyle` paints it, so the editor, the value pane and the row view share one colour table.
+The last two share `SyntaxTextView` as well. A JSON value over 200,000 characters stays plain,
+because thousands of colour runs make the pane stall.
 
 **The value pane belongs to the tab.** Every tab opens without it. A double click on a cell,
 Shift-Return, or the button in the bar brings it, and each tab keeps its own answer in the session
