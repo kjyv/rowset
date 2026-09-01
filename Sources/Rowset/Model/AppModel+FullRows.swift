@@ -42,6 +42,7 @@ extension AppModel {
         else { return }
 
         current.rows[index].values = fetched.values
+        current.revision += 1
         tab.result = current
     }
 

@@ -111,6 +111,7 @@ struct ResultTableView: NSViewRepresentable {
         weak var headerMenu: NSMenu?
 
         private var shownResultID: UUID?
+        private var shownRevision = 0
         private var shownColumnNames: [String] = []
         private var shownSelection: CellSelection?
         /// Blocks the callback while the code writes the sort descriptors itself.
@@ -128,6 +129,7 @@ struct ResultTableView: NSViewRepresentable {
             if names != shownColumnNames {
                 rebuildColumns()
                 shownResultID = parent.result.id
+                shownRevision = parent.result.revision
                 shownSelection = parent.selection
                 tableView.reloadData()
                 syncSortDescriptors()
@@ -136,11 +138,19 @@ struct ResultTableView: NSViewRepresentable {
 
             if shownResultID != parent.result.id {
                 shownResultID = parent.result.id
+                shownRevision = parent.result.revision
                 shownSelection = parent.selection
                 tableView.reloadData()
                 tableView.scrollRowToVisible(0)
                 syncSortDescriptors()
                 return
+            }
+
+            // A row was replaced, which the id cannot say. Draw it again where it stands, so the
+            // page and the scroll both stay put.
+            if shownRevision != parent.result.revision {
+                shownRevision = parent.result.revision
+                tableView.reloadData()
             }
 
             revealRequestedColumn()

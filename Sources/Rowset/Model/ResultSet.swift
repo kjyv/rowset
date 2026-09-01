@@ -147,6 +147,11 @@ struct CellSelection: Hashable, Sendable {
 struct ResultSet: Sendable, Identifiable {
     /// Names this run. The grid reloads only when the id changes, not on every cell click.
     let id = UUID()
+    /// Counts the times a row was replaced after the query brought it.
+    ///
+    /// A copy of a struct keeps the id, so the id alone cannot say that a row changed. Fetching
+    /// a whole value behind a placeholder does exactly that, and the grid has to draw it.
+    var revision = 0
     var columns: [ResultColumn] = []
     var rows: [ResultRow] = []
     /// Seconds the query took, measured in the app.

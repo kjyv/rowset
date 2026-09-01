@@ -199,3 +199,30 @@ final class LargeValueTests: XCTestCase {
         XCTAssertEqual(DisplayValue.sizeText(3 * 1024 * 1024), "3.0 MB")
     }
 }
+
+final class ResultRevisionTests: XCTestCase {
+
+    private func result() -> ResultSet {
+        var set = ResultSet()
+        set.columns = [ResultColumn(id: 0, name: "payload", typeName: "jsonb")]
+        set.rows = [ResultRow(id: 0, values: [.placeholder(bytes: 9818)])]
+        return set
+    }
+
+    /// A copy of a struct keeps the id, so the id alone cannot say a row changed. The grid used
+    /// that id to decide whether to draw again, and a fetched value stayed hidden until the
+    /// selection moved.
+    func testACopyKeepsTheIdButCountsTheChange() {
+        let original = result()
+        var changed = original
+        changed.rows[0].values = [DisplayValue.make(text: "{\"a\": 1}")]
+        changed.revision += 1
+
+        XCTAssertEqual(changed.id, original.id, "the id says nothing about the rows")
+        XCTAssertNotEqual(changed.revision, original.revision, "the count does")
+    }
+
+    func testAFreshResultStartsAtZero() {
+        XCTAssertEqual(ResultSet().revision, 0)
+    }
+}
