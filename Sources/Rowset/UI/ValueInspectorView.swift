@@ -39,6 +39,14 @@ struct ValueInspectorView: View {
             isEditing = false
             validationMessage = nil
         }
+        // The Return key of the grid asks the pane to start an edit, for a value that has more
+        // than one line and does not fit a cell.
+        .onChange(of: editing?.tab.paneEditRequests) { _, _ in
+            guard editing != nil, let value else { return }
+            draft = value.isNull ? "" : value.text
+            validationMessage = nil
+            isEditing = true
+        }
     }
 
     private var header: some View {

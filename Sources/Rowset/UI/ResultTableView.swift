@@ -48,6 +48,12 @@ struct ResultTableView: NSViewRepresentable {
         tableView.onSpace = { [weak coordinator] in
             coordinator?.openQuickLook()
         }
+        tableView.onReturn = { [weak coordinator] in
+            coordinator?.editSelection()
+        }
+        tableView.onCommandReturn = { [weak coordinator] in
+            coordinator?.parent.onOpenValue()
+        }
 
         tableView.style = .fullWidth
         tableView.rowHeight = Self.rowHeight
@@ -96,7 +102,8 @@ struct ResultTableView: NSViewRepresentable {
     final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate,
         NSTextFieldDelegate
     {
-        private var parent: ResultTableView
+        /// Not private: the table view reaches the callbacks through it.
+        var parent: ResultTableView
         weak var tableView: NSTableView?
         weak var cellMenu: NSMenu?
         weak var headerMenu: NSMenu?
@@ -415,6 +422,29 @@ struct ResultTableView: NSViewRepresentable {
             field.removeFromSuperview()
             tableView?.window?.makeFirstResponder(tableView)
             return true
+        }
+
+        /// Starts an edit on the cell of the selection.
+        ///
+        /// A short value opens a field in the cell. A value of more than one line does not fit
+        /// there, so the value pane opens and starts its own edit.
+        func editSelection() {
+            guard let tab = parent.editing, tab.isEditable,
+                  let address = parent.selection?.focus,
+                  let row = parent.result.rows.firstIndex(where: { $0.id == address.rowID }),
+                  let column = parent.result.columns.firstIndex(
+                    where: { $0.id == address.columnID })
+            else {
+                NSSound.beep()
+                return
+            }
+
+            if isMultiline(at: address) {
+                parent.onOpenValue()
+                tab.paneEditRequests += 1
+            } else {
+                beginEdit(row: row, column: column, address: address)
+            }
         }
 
         /// Opens the whole row view on the row of the selection.
@@ -829,6 +859,8 @@ final class OverdrawTableView: NSTableView {
     var onCopy: (() -> Void)?
     var onDelete: (() -> Void)?
     var onSpace: (() -> Void)?
+    var onReturn: (() -> Void)?
+    var onCommandReturn: (() -> Void)?
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -878,6 +910,19 @@ final class OverdrawTableView: NSTableView {
             onSpace?()
             return
         }
+
+        if event.keyCode == 36 {
+            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if modifiers == .command, onCommandReturn != nil {
+                onCommandReturn?()
+                return
+            }
+            if modifiers.isEmpty, onReturn != nil {
+                onReturn?()
+                return
+            }
+        }
+
         super.keyDown(with: event)
     }
 

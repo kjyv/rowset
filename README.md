@@ -296,9 +296,12 @@ Editing the statement, or moving the caret to another one, starts the pages and 
 
 ## Changing a value
 
-1. Double click a cell. A short value opens a field in the cell. A boolean opens a menu of
-   `true`, `false`, and `NULL` where the column takes one. A value of more than one line opens in
-   the value pane, where the pencil button starts the edit.
+1. Double click a cell, or select it and press **Return**. A short value opens a field in the
+   cell. A boolean opens a menu of `true`, `false`, and `NULL` where the column takes one. A
+   value of more than one line opens in the value pane, already in edit mode.
+
+   **Command-Return** opens the value pane without starting an edit. In a console that key runs
+   the statement, so use the double click there.
 2. Change as many cells as you want. Each one turns yellow, and a bar counts them.
    Select cells and press **Delete** to set them to NULL. A column that takes no NULL is left
    alone, so a block of mixed columns nulls only the ones it may.

@@ -127,6 +127,8 @@ final class QueryTab: Identifiable {
     var revealColumn: String?
     /// The row the whole row view shows. `nil` keeps it closed.
     var quickLookRow: Int?
+    /// Counts the times something asked the value pane to start an edit.
+    var paneEditRequests = 0
 
     // MARK: - Editing
 
