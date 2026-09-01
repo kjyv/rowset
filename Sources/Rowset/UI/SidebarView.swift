@@ -335,8 +335,8 @@ struct TreeNodeRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         // No tap gesture here. Any gesture on a row swallows the click that selects it, and only
-        // the padding above and below the text stayed clickable. SidebarDoubleClick handles the
-        // double click on the table underneath instead.
+        // the padding above and below the text stayed clickable. The list delivers the double
+        // click through its own primary action instead.
         .contextMenu {
             if node.kind.isTableLike {
                 Button("Open") { open() }

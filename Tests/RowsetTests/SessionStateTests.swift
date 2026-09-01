@@ -54,6 +54,32 @@ final class SessionStateTests: XCTestCase {
         XCTAssertEqual(read.inspectorHeight, 260)
     }
 
+    /// A field added later must not throw away every tab of a saved session.
+    func testAFileWithMissingKeysStillReads() throws {
+        let json = """
+            {
+              "tabs": [
+                {"bookmarkID": "\(UUID().uuidString)", "schema": "public", "table": "component"}
+              ]
+            }
+            """
+        let state = try JSONDecoder().decode(SessionState.self, from: Data(json.utf8))
+        XCTAssertEqual(state.tabs.count, 1)
+        XCTAssertEqual(state.tabs[0].table, "component")
+        XCTAssertEqual(state.tabs[0].rowLimit, 50)
+        XCTAssertEqual(state.tabs[0].filterText, "")
+        XCTAssertNil(state.tabs[0].showsValuePane)
+        XCTAssertEqual(state.inspectorHeight, 190)
+        XCTAssertTrue(state.sidebarVisible)
+    }
+
+    /// A tab without its bookmark belongs to no connection, so that one key is required.
+    func testATabWithoutABookmarkIsAnError() {
+        let json = #"{"tabs": [{"table": "component"}]}"#
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(SessionState.self, from: Data(json.utf8)))
+    }
+
     func testATabStateKnowsItsKind() {
         let table = TabState(bookmarkID: UUID(), schema: "public", table: "component")
         XCTAssertFalse(table.isSQLTab)

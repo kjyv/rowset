@@ -13,7 +13,7 @@ extension AppModel {
               let row = result.row(id: rowID),
               row.values.contains(where: \.isCut),
               let connection = connections[tab.connectionID],
-              let key = keyAssignments(for: row, in: result, tab: tab)
+              let key = keyAssignments(rowID: rowID, in: result, tab: tab)
         else { return }
 
         let conditions = key
@@ -34,10 +34,12 @@ extension AppModel {
             LIMIT 1
             """
 
+        // The page may have moved while the row was on its way. A row id is its place in the
+        // page, so the values of the old page would land in a row of the new one.
         guard let whole = try? await connection.run(sql, limit: 1),
               let fetched = whole.rows.first,
               fetched.values.count == row.values.count,
-              var current = tab.result,
+              var current = tab.result, current.id == result.id,
               let index = current.rows.firstIndex(where: { $0.id == rowID })
         else { return }
 
@@ -57,19 +59,4 @@ extension AppModel {
         }
     }
 
-    /// The primary key of one row, taken from what the server sent.
-    private func keyAssignments(
-        for row: ResultRow, in result: ResultSet, tab: QueryTab
-    ) -> [SQLBuilder.Assignment]? {
-        var assignments: [SQLBuilder.Assignment] = []
-        for name in tab.primaryKey {
-            guard let column = result.columns.first(where: { $0.name == name }) else { return nil }
-            let value = row.value(at: column.id)
-            // A key column is never cut, so its value is whole.
-            guard !value.isCut else { return nil }
-            assignments.append(
-                SQLBuilder.Assignment(column: name, value: value.isNull ? nil : value.text))
-        }
-        return assignments.isEmpty ? nil : assignments
-    }
 }

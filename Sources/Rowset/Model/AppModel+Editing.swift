@@ -57,15 +57,17 @@ extension AppModel {
     /// The primary key of one row, taken from what the server sent.
     ///
     /// The original value matters. An edit of a key column must still find the row it came from.
-    private func keyAssignments(
-        rowID: Int, in result: ResultSet, tab: QueryTab
-    ) -> [SQLBuilder.Assignment]? {
+    ///
+    /// A stand-in is not a key. A key column is never cut, so this cannot happen, but a WHERE
+    /// built from a size would name no row at all.
+    func keyAssignments(rowID: Int, in result: ResultSet, tab: QueryTab)
+        -> [SQLBuilder.Assignment]? {
+        guard let row = result.row(id: rowID) else { return nil }
         var assignments: [SQLBuilder.Assignment] = []
         for name in tab.primaryKey {
-            guard let column = result.columns.first(where: { $0.name == name }),
-                  let row = result.row(id: rowID)
-            else { return nil }
+            guard let column = result.columns.first(where: { $0.name == name }) else { return nil }
             let value = row.value(at: column.id)
+            guard !value.isCut else { return nil }
             assignments.append(
                 SQLBuilder.Assignment(column: name, value: value.isNull ? nil : value.text))
         }

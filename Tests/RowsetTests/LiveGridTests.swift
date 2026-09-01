@@ -41,7 +41,7 @@ final class LiveGridTests: XCTestCase {
         let model = AppModel(
             store: BookmarkStore(fileURL: directory.appendingPathComponent("bookmarks.json")),
             sessionStore: SessionStore(fileURL: directory.appendingPathComponent("session.json")),
-            bufferStore: BufferStore(fileURL: directory.appendingPathComponent("buffers.json")))
+            bufferStore: BufferStore(fileURL: directory.appendingPathComponent("consoles.json")))
         let connection = ConnectionModel(bookmark: bookmark)
         model.connections[connection.id] = connection
         return (model, connection)

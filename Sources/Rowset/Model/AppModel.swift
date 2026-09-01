@@ -420,6 +420,11 @@ final class AppModel {
         var copy = original
         copy.id = UUID()
         copy.name = "\(original.displayName) copy"
+        // The password is not a field of the bookmark. It lives in the keychain under the id, so
+        // a copy with a new id would have none and could not connect.
+        if let password = KeychainStore.password(for: bookmarkID) {
+            KeychainStore.setPassword(password, for: copy.id)
+        }
         store.upsert(copy)
         syncConnections()
         editedBookmark = copy

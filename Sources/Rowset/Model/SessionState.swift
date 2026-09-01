@@ -22,6 +22,46 @@ struct TabState: Codable, Sendable {
     var rowLimit: Int = 50
 
     var isSQLTab: Bool { schema == nil || table == nil }
+
+    init(
+        bookmarkID: UUID,
+        schema: String? = nil,
+        table: String? = nil,
+        filterText: String = "",
+        orderByText: String = "",
+        sqlText: String = "",
+        bufferID: UUID? = nil,
+        showsValuePane: Bool? = nil,
+        rowLimit: Int = 50
+    ) {
+        self.bookmarkID = bookmarkID
+        self.schema = schema
+        self.table = table
+        self.filterText = filterText
+        self.orderByText = orderByText
+        self.sqlText = sqlText
+        self.bufferID = bufferID
+        self.showsValuePane = showsValuePane
+        self.rowLimit = rowLimit
+    }
+
+    /// Reads the file field by field, and takes the default for a key that is missing.
+    ///
+    /// The synthesized reader wants every key of a value that is not optional, so one field added
+    /// later would throw away every tab of every saved session. Only the bookmark is worth an
+    /// error: a tab that reads half way is still the tab you left.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        bookmarkID = try container.decode(UUID.self, forKey: .bookmarkID)
+        schema = try container.decodeIfPresent(String.self, forKey: .schema)
+        table = try container.decodeIfPresent(String.self, forKey: .table)
+        filterText = try container.decodeIfPresent(String.self, forKey: .filterText) ?? ""
+        orderByText = try container.decodeIfPresent(String.self, forKey: .orderByText) ?? ""
+        sqlText = try container.decodeIfPresent(String.self, forKey: .sqlText) ?? ""
+        bufferID = try container.decodeIfPresent(UUID.self, forKey: .bufferID)
+        showsValuePane = try container.decodeIfPresent(Bool.self, forKey: .showsValuePane)
+        rowLimit = try container.decodeIfPresent(Int.self, forKey: .rowLimit) ?? 50
+    }
 }
 
 /// What the window looked like when you closed it.
@@ -38,6 +78,36 @@ struct SessionState: Codable, Sendable {
 
     func nodes(for bookmarkID: UUID) -> [NodePath] {
         expandedNodes[bookmarkID.uuidString] ?? []
+    }
+
+    init(
+        expandedBookmarks: [UUID] = [],
+        expandedNodes: [String: [NodePath]] = [:],
+        tabs: [TabState] = [],
+        selectedTabIndex: Int? = nil,
+        inspectorHeight: Double = 190,
+        sidebarVisible: Bool = true
+    ) {
+        self.expandedBookmarks = expandedBookmarks
+        self.expandedNodes = expandedNodes
+        self.tabs = tabs
+        self.selectedTabIndex = selectedTabIndex
+        self.inspectorHeight = inspectorHeight
+        self.sidebarVisible = sidebarVisible
+    }
+
+    /// Reads the file field by field, for the same reason `TabState` does.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        expandedBookmarks =
+            try container.decodeIfPresent([UUID].self, forKey: .expandedBookmarks) ?? []
+        expandedNodes =
+            try container.decodeIfPresent([String: [NodePath]].self, forKey: .expandedNodes) ?? [:]
+        tabs = try container.decodeIfPresent([TabState].self, forKey: .tabs) ?? []
+        selectedTabIndex = try container.decodeIfPresent(Int.self, forKey: .selectedTabIndex)
+        inspectorHeight =
+            try container.decodeIfPresent(Double.self, forKey: .inspectorHeight) ?? 190
+        sidebarVisible = try container.decodeIfPresent(Bool.self, forKey: .sidebarVisible) ?? true
     }
 }
 

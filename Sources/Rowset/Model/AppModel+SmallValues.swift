@@ -41,8 +41,11 @@ extension AppModel {
             WHERE \(SQLBuilder.keyList(tab.primaryKey, values: keys))
             """
 
+        // The page may have moved while the values were on their way. Writing them into the page
+        // that is there now would show the rows of the page you left.
         guard let fetched = try? await connection.run(sql, limit: keys.count),
-              fetched.columns.count == wanted.count
+              fetched.columns.count == wanted.count,
+              let current = tab.result, current.id == result.id
         else { return }
 
         let keyCount = tab.primaryKey.count
@@ -52,7 +55,7 @@ extension AppModel {
             byKey[key] = Array(row.values.dropFirst(keyCount))
         }
 
-        var updated = result
+        var updated = current
         var changed = false
 
         for rowIndex in updated.rows.indices {

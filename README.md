@@ -329,8 +329,12 @@ The plus costs nothing. Every page asks the server for **one row more** than it 
 row never reaches the grid, and it is what says whether another page follows. Only the last page
 button needs the real count, so it runs one first.
 
-A new filter, sort, or page size puts you back on the first page and forgets the count, because
-all three make the old count wrong.
+A new filter puts you back on the first page and forgets the count, because other rows make the
+old count wrong.
+
+A new sort keeps the page and the count. It orders the same rows, so neither is wrong. A new page
+size keeps the count as well, and the offset moves to the start of the page that now holds the row
+you were looking at.
 
 The widget is the only place that sets the page size. There is no separate row field any more.
 
