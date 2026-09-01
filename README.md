@@ -1,9 +1,10 @@
 # Rowset
 
-A small macOS database browser for AWS RDS Postgres with IAM authentication.
+A macOS database browser for Postgres, with AWS IAM sign-in.
 
-Rowset offers what most people use every day: pick a saved
-connection, look at the tables, and read some rows with a filter and a sort.
+Pick a saved connection, read a table, filter and sort it, change a value, and run SQL. Rowset
+signs in to an RDS instance with an IAM token that it fetches at every connect, or to any other
+server with a user and a password.
 
 ## What it does
 
@@ -22,7 +23,7 @@ connection, look at the tables, and read some rows with a filter and a sort.
   statement under the caret marked.
 - Remembers the window size and position.
 
-Postgres is the only driver for now. SQLite comes later.
+Rowset speaks Postgres. The driver sits behind a protocol, so another one can join it.
 
 ## Requirements
 
@@ -41,29 +42,10 @@ open Rowset.xcodeproj
 The script installs XcodeGen if it is missing, downloads the RDS certificate bundle if it is
 missing, and generates the Xcode project. To generate the project alone, run `xcodegen generate`.
 
+Build and run from Xcode. To keep the app, copy `Rowset.app` out of the build folder into
+`/Applications`.
+
 `Rowset.xcodeproj` is not in git. `project.yml` describes it.
-
-## The app icon
-
-The icon is a drawing in code, not a file somebody exported:
-
-```sh
-./Scripts/make-icon.sh
-```
-
-`Scripts/make-icon.swift` draws every size, and `iconutil` builds
-`Sources/Rowset/Resources/AppIcon.icns` out of them. Change a color or a proportion, run the
-script again, and build. The icns is committed, so a normal build needs no extra step.
-
-The asset catalog is not used for this. Its compiler kept only four sizes and stopped at 256
-points, so `iconutil` builds the file instead. It writes all ten, up to 1024 points.
-
-macOS caches an app icon per bundle path, so a fresh icon may not appear at once. To force it:
-
-```sh
-/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/\
-LaunchServices.framework/Versions/A/Support/lsregister -f <path to Rowset.app>
-```
 
 ## Add a connection
 
@@ -134,7 +116,8 @@ The bookmark file is plain JSON. You can edit it by hand and copy it to another 
 
 ## The console
 
-The editor holds as many statements as you like.
+A console belongs to a connection, not to a table. Its editor holds as many statements as you
+like, and it runs one of them or all of them.
 
 ### Saved consoles
 
@@ -210,7 +193,7 @@ punctuation. That one pass serves both jobs:
 
 Neither job asks what the words mean, so a grammar would add a build dependency and buy nothing.
 A parser earns its place only for colouring by meaning, such as marking a table apart from a
-column. That door stays open.
+column.
 
 ### From a table to a console
 
@@ -238,11 +221,10 @@ table again from the sidebar for that.
 
 ## Large values
 
-A table of JSON documents and arrays used to crawl. A page of a thousand rows of a table with
-eleven large columns took over six minutes.
+A column of JSON documents or arrays is what makes a wide table slow to open. Reading one such
+value is the whole cost, and that cost has almost nothing to do with how much text comes back.
 
-Reading such a value is the whole cost. It has almost nothing to do with how much text comes
-back, measured on a thousand cold rows:
+Measured on a thousand cold rows of a table with eleven large columns:
 
 | Query | Time | Text |
 | --- | --- | --- |
@@ -345,7 +327,7 @@ A new sort keeps the page and the count. It orders the same rows, so neither is 
 size keeps the count as well, and the offset moves to the start of the page that now holds the row
 you were looking at.
 
-The widget is the only place that sets the page size. There is no separate row field any more.
+The widget is the only place that sets the page size.
 
 ## Pages in a console
 
@@ -444,10 +426,11 @@ whole grid again.
 **The value pane uses `NSTextView`.** SwiftUI lays out a whole string at once, which stalls on a
 large document. `NSTextView` lays out only the part it draws.
 
-**Only a count that goes up asks the pane for an edit.** The pane has no cell to write to until
-you pick one, so the first cell you pick moves that count from none to zero. Reading that as a
-request opened the editor on the first click of every table, and the editor shows the plain text,
-neither formatted nor coloured.
+**Only a count that goes up asks the pane for an edit.** The grid asks the pane to open an editor
+by raising a counter on the tab. A tab with no picked cell has no counter to read at all, so the
+step from none to zero is not a request. The counter is read together with the tab that holds it,
+because a tab switch reuses the view and the counter of the next tab says nothing about the last
+one.
 
 **The value pane sets its text as one attributed string**, so the view never holds a text that is
 half painted. It reads `textStorage` to do it, which is safe: only `layoutManager` moves an
@@ -460,10 +443,33 @@ and the last two share `SyntaxTextView` as well. A JSON value
 over 200,000 characters stays plain, because thousands of colour runs make the pane stall.
 
 **The value pane belongs to the tab.** Every tab opens without it. A double click on a cell,
-Shift-Return, or the button in the bar brings it, and each tab remembers its own answer. The pane
-used to belong to the window, so a new tab took the pane of the tab you came from.
+Shift-Return, or the button in the bar brings it, and each tab keeps its own answer in the session
+file. A pane that belonged to the window would open in a tab that never asked for one.
 
 **The app is not sandboxed.** It reads `~/.aws/config` and runs the `aws` binary.
+
+## The app icon
+
+The icon is drawn in code:
+
+```sh
+./Scripts/make-icon.sh
+```
+
+`Scripts/make-icon.swift` draws every size, and `iconutil` builds
+`Sources/Rowset/Resources/AppIcon.icns` out of them. Change a color or a proportion, run the
+script again, and build. The icns is committed, so a normal build needs no extra step.
+
+`iconutil` builds the file and the asset catalog does not. The catalog compiler keeps four sizes
+and stops at 256 points, which leaves out the sizes the Dock and the Finder ask for. `iconutil`
+writes all ten, up to 1024 points.
+
+macOS caches an app icon per bundle path, so a fresh icon may not appear at once. To force it:
+
+```sh
+/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/\
+LaunchServices.framework/Versions/A/Support/lsregister -f <path to Rowset.app>
+```
 
 ## Test
 
@@ -471,8 +477,8 @@ used to belong to the window, so a new tab took the pane of the tab you came fro
 xcodebuild -project Rowset.xcodeproj -scheme Rowset -destination 'platform=macOS' test
 ```
 
-The tests cover the SQL builder, the AWS config parser, and the cell renderer. None of them
-needs a database.
+The unit tests need no database. They cover the SQL the app builds, the AWS config parser, the
+cell renderer, the two lexers, the paging rules, the clipboard formats, and the value pane.
 
 ### Live tests
 
