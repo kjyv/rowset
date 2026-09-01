@@ -19,6 +19,8 @@ struct DisplayValue: Hashable, Sendable {
     var isCut: Bool = false
     /// True when the text is a stand-in for a value that was never fetched.
     var isPlaceholder: Bool = false
+    /// How large the value is, for a stand-in. The server sent this instead of the value.
+    var bytes: Int? = nil
 
     /// The most characters the app keeps for one cell. A row can hold a document, and the grid
     /// must stay fast, so the renderer stops here.
@@ -31,7 +33,7 @@ struct DisplayValue: Hashable, Sendable {
     static func placeholder(bytes: Int) -> DisplayValue {
         DisplayValue(
             text: sizeText(bytes), preview: sizeText(bytes),
-            isCut: true, isPlaceholder: true)
+            isCut: true, isPlaceholder: true, bytes: bytes)
     }
 
     /// A size a person can read at a glance.

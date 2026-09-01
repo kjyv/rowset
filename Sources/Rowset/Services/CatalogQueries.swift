@@ -47,7 +47,8 @@ enum CatalogQueries {
     /// The columns of one table, in their real order.
     static func columns(schema: String, table: String) -> String {
         """
-        SELECT column_name, data_type, is_nullable
+        SELECT column_name, data_type, is_nullable,
+               coalesce(character_maximum_length, -1)::text
         FROM information_schema.columns
         WHERE table_schema = \(SQLBuilder.quoteLiteral(schema))
           AND table_name = \(SQLBuilder.quoteLiteral(table))

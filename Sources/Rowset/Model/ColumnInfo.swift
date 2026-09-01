@@ -38,16 +38,38 @@ struct ColumnInfo: Hashable, Sendable {
     var name: String
     var typeName: String
     var isNullable: Bool
+    /// What the declaration allows, as in `varchar(50)`. `nil` means no limit was given.
+    var maximumLength: Int? = nil
 
     var kind: ColumnKind { ColumnKind.of(typeName) }
 
-    /// True when one value of this column can be large enough to be worth leaving on the server.
+    /// True when one value of this column could be large.
     ///
-    /// A grid shows a few hundred characters of a cell. Fetching a JSON document of half a
-    /// megabyte to show three hundred characters of it is the whole cost of opening a wide table.
+    /// This is what the declaration allows, not what the rows hold. It decides which columns the
+    /// grid asks for the size of, and the sizes that come back then decide which are read whole.
+    ///
+    /// A `varchar` with no length is the same as `text` inside Postgres and can hold megabytes,
+    /// so only a bounded one counts as small.
     var isLarge: Bool {
         let name = typeName.lowercased()
-        return name.contains("json") || name == "array" || name == "text"
-            || name == "bytea" || name == "xml"
+
+        if name.contains("json") || name == "array" || name == "text"
+            || name == "bytea" || name == "xml" {
+            return true
+        }
+
+        if name.contains("char") {
+            guard let maximumLength else { return true }
+            return maximumLength > Self.inlineValueSize
+        }
+
+        return false
     }
+
+    /// The largest value Postgres keeps in the row itself.
+    ///
+    /// A larger one goes to the value store beside the table, and reading it then costs a second
+    /// lookup. That lookup is the whole expense of opening a wide table. A value this small comes
+    /// with the row and costs nothing more, so a column that cannot exceed it is never cut.
+    static let inlineValueSize = 2048
 }

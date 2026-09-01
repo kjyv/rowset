@@ -2,11 +2,11 @@ import Foundation
 
 extension AppModel {
 
-    /// Fetches a row whole, for the values the grid asked the server to cut.
+    /// Fetches a row whole, for the values the grid left on the server.
     ///
-    /// The grid asks for the first characters of a large value, which is what makes a wide table
-    /// open quickly. Everything that shows or writes a whole value comes here first, so a cut
-    /// value is never what you read, edit or copy.
+    /// The grid asks for the size of a large value and never for the value, which is what makes a
+    /// wide table open quickly. Everything that shows or writes a whole value comes here first,
+    /// so a stand-in is never what you read, edit or copy.
     func loadFullRow(_ rowID: Int, in tab: QueryTab) async {
         guard case .table(let schema, let name) = tab.kind,
               let result = tab.result,
@@ -65,7 +65,7 @@ extension AppModel {
         for name in tab.primaryKey {
             guard let column = result.columns.first(where: { $0.name == name }) else { return nil }
             let value = row.value(at: column.id)
-            // A key column is never large, so its value is whole.
+            // A key column is never cut, so its value is whole.
             guard !value.isCut else { return nil }
             assignments.append(
                 SQLBuilder.Assignment(column: name, value: value.isNull ? nil : value.text))

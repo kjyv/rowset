@@ -149,12 +149,21 @@ final class QueryTab: Identifiable {
             .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
-    /// True when the query may leave the end of a large value on the server.
+    /// True when the query may leave a large value on the server.
     ///
     /// It needs a key. Without one there is no way to ask for the rest of a row, so the whole
     /// value has to come with the grid.
     var cutsLargeValues: Bool {
-        !primaryKey.isEmpty && knownColumns.contains { columnInfo[$0.name]?.isLarge == true }
+        !primaryKey.isEmpty && knownColumns.contains { cuts($0.name) }
+    }
+
+    /// True when the grid asks for the size of this column and not for its value.
+    ///
+    /// A key column is never cut. Its value is what finds the row again, both to fetch the rest
+    /// of a page and to open one row on a click. A key of type `text` or of an unbounded
+    /// `varchar` counts as large by type, so this rule is what keeps such a table usable.
+    func cuts(_ name: String) -> Bool {
+        columnInfo[name]?.isLarge == true && !primaryKey.contains(name)
     }
 
     /// The select list of the grid query.
@@ -168,18 +177,15 @@ final class QueryTab: Identifiable {
         }
 
         return names.map { name in
-            guard columnInfo[name]?.isLarge == true else {
-                return SQLBuilder.quoteIdentifier(name)
-            }
-            return SQLBuilder.sizeOfColumn(name)
+            cuts(name) ? SQLBuilder.sizeOfColumn(name) : SQLBuilder.quoteIdentifier(name)
         }
     }
 
-    /// The most bytes a value of one page may hold and still be worth fetching.
+    /// The bytes one page may read out of the value store.
     ///
-    /// A page of a thousand such values is two megabytes, which costs about a second. Anything
-    /// larger stays on the server until you ask for it.
-    static let readableValueSize = 2048
+    /// Only a value too large for its row costs a second lookup, so only those bytes count here.
+    /// A quarter of a megabyte of them takes about a second on a cold table.
+    static let pageByteBudget = 256 * 1024
 
     /// Turns the size the server sent into a stand-in the grid can show.
     ///
@@ -187,18 +193,18 @@ final class QueryTab: Identifiable {
     /// NULL. Everything else becomes a placeholder that says how large the value is, and asks
     /// for the whole row the moment you touch it.
     ///
-    /// It gives back the columns whose largest value on this page is small enough to fetch after
-    /// all. The catalog cannot answer that: `pg_stats` reports an average of twenty bytes for a
-    /// column whose values run to fifty kilobytes. Only the page itself knows.
+    /// It gives back the columns this page can afford to read after all, cheapest first, until
+    /// the budget is spent. The catalog cannot answer that: `pg_stats` reports an average of
+    /// twenty bytes for a column whose values run to fifty kilobytes. Only the page itself knows.
     @discardableResult
     func markCutValues(in result: inout ResultSet) -> [String] {
         guard cutsLargeValues else { return [] }
 
-        let largeColumns = result.columns.filter { columnInfo[$0.name]?.isLarge == true }
+        let largeColumns = result.columns.filter { cuts($0.name) }
         guard !largeColumns.isEmpty else { return [] }
 
         let largeIDs = Set(largeColumns.map(\.id))
-        var largest: [Int: Int] = [:]
+        var total: [Int: Int] = [:]
 
         for rowIndex in result.rows.indices {
             for (valueIndex, column) in result.columns.enumerated()
@@ -206,14 +212,25 @@ final class QueryTab: Identifiable {
                 guard valueIndex < result.rows[rowIndex].values.count else { continue }
                 let value = result.rows[rowIndex].values[valueIndex]
                 guard !value.isNull, let bytes = Int(value.text) else { continue }
-                largest[column.id] = max(largest[column.id] ?? 0, bytes)
+                // A value that fits in its row comes with the row, so it costs nothing to read.
+                if bytes > ColumnInfo.inlineValueSize {
+                    total[column.id, default: 0] += bytes
+                }
                 result.rows[rowIndex].values[valueIndex] = .placeholder(bytes: bytes)
             }
         }
 
-        return largeColumns
-            .filter { (largest[$0.id] ?? 0) <= Self.readableValueSize }
-            .map(\.name)
+        // The cheapest column first, until the page has spent its budget. A column whose values
+        // all fit in their rows costs nothing and always comes back.
+        var left = Self.pageByteBudget
+        var worthReading: [String] = []
+        for column in largeColumns.sorted(by: { total[$0.id] ?? 0 < total[$1.id] ?? 0 }) {
+            let bytes = total[column.id] ?? 0
+            guard bytes <= left else { break }
+            left -= bytes
+            worthReading.append(column.name)
+        }
+        return worthReading
     }
 
     /// True when this cell holds only the start of its value.

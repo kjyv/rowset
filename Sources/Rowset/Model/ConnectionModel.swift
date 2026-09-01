@@ -161,8 +161,13 @@ final class ConnectionModel: Identifiable {
         else { return [] }
         return rows.compactMap { row in
             guard row.count >= 3 else { return nil }
+            // The catalog reports no length limit as NULL, which the query maps to -1.
+            let declared = row.count >= 4 ? (Int(row[3]) ?? -1) : -1
             return ColumnInfo(
-                name: row[0], typeName: row[1], isNullable: row[2].uppercased() == "YES")
+                name: row[0],
+                typeName: row[1],
+                isNullable: row[2].uppercased() == "YES",
+                maximumLength: declared < 0 ? nil : declared)
         }
     }
 

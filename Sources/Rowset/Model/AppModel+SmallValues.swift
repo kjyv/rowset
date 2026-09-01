@@ -19,31 +19,38 @@ extension AppModel {
               !tab.primaryKey.isEmpty
         else { return }
 
-        let wanted = tab.primaryKey + names
-        let sql = SQLBuilder.selectRows(
-            schema: schema,
-            table: table,
-            filter: tab.filterText,
-            orderBy: tab.orderByText,
-            limit: tab.rowLimit + 1,
-            offset: tab.pageOffset,
-            columns: wanted)
+        guard let keyIndexes = keyColumnIndexes(of: result, tab: tab),
+              let targets = columnIndexes(of: names, in: result)
+        else { return }
 
-        guard let fetched = try? await connection.run(sql, limit: tab.rowLimit + 1),
+        // The query names the rows of the page by their key. Running the page query again would
+        // not do: a SELECT without an ORDER BY promises no order, and a second run with another
+        // select list can read the table in another order and give other rows.
+        var keys: [[String]] = []
+        for row in result.rows {
+            let values = keyIndexes.map { row.value(at: $0) }
+            guard values.allSatisfy({ !$0.isNull && !$0.isCut }) else { continue }
+            keys.append(values.map(\.text))
+        }
+        guard !keys.isEmpty else { return }
+
+        let wanted = tab.primaryKey + names
+        let sql = """
+            SELECT \(wanted.map(SQLBuilder.quoteIdentifier).joined(separator: ", "))
+            FROM \(SQLBuilder.qualifiedName(schema: schema, table: table))
+            WHERE \(SQLBuilder.keyList(tab.primaryKey, values: keys))
+            """
+
+        guard let fetched = try? await connection.run(sql, limit: keys.count),
               fetched.columns.count == wanted.count
         else { return }
 
-        // The rows are matched by key, because two runs of one query need not agree on order.
         let keyCount = tab.primaryKey.count
         var byKey: [String: [DisplayValue]] = [:]
         for row in fetched.rows {
             let key = (0..<keyCount).map { row.value(at: $0).text }.joined(separator: "\u{1}")
             byKey[key] = Array(row.values.dropFirst(keyCount))
         }
-
-        guard let keyIndexes = keyColumnIndexes(of: result, tab: tab),
-              let targets = columnIndexes(of: names, in: result)
-        else { return }
 
         var updated = result
         var changed = false

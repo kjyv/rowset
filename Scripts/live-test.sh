@@ -22,7 +22,11 @@ export TEST_RUNNER_ROWSET_LIVE_PROFILE="$ROWSET_LIVE_PROFILE"
 export TEST_RUNNER_ROWSET_LIVE_REGION="${ROWSET_LIVE_REGION:-eu-central-1}"
 export TEST_RUNNER_ROWSET_LIVE_PORT="${ROWSET_LIVE_PORT:-5432}"
 export TEST_RUNNER_ROWSET_LIVE_SCHEMA="${ROWSET_LIVE_SCHEMA:-public}"
+export TEST_RUNNER_ROWSET_MEASURE_TABLE="${ROWSET_MEASURE_TABLE:-}"
+export TEST_RUNNER_ROWSET_MEASURE_LIMIT="${ROWSET_MEASURE_LIMIT:-50}"
 export TEST_RUNNER_ROWSET_CA_BUNDLE="$PWD/Sources/Rowset/Resources/rds-global-bundle.pem"
 
 xcodebuild -project Rowset.xcodeproj -scheme Rowset -destination 'platform=macOS' \
-    -only-testing:RowsetTests/LiveConnectionTests test
+    -only-testing:RowsetTests/LiveConnectionTests \
+    ${ROWSET_MEASURE_TABLE:+-only-testing:RowsetTests/MeasureTests} \
+    ${ROWSET_MEASURE_TABLE:+-only-testing:RowsetTests/LiveGridTests} test

@@ -252,15 +252,43 @@ SELECT "created_at", pg_column_size("vehicle_movement_events")::text AS "…", �
 
 ### Which columns come back whole
 
-The sizes of the page that just arrived decide, one column at a time. A column whose largest
-value on this page is under two kilobytes is fetched in a second query and fills its cells. Every
-other column keeps a grey stand-in naming its size, such as `9.6 kB`.
+Two rules decide, in this order.
+
+**First the declared type**, before any row is read. `text`, `json`, `jsonb`, `xml`, `bytea` and
+every array count as large. A `character varying` counts as large only when its declaration sets
+no length, or a length over two kilobytes. An unbounded `varchar` is the same as a `text` inside
+Postgres and can hold megabytes, so its name alone says nothing.
+
+This first rule is deliberately pessimistic. It cannot know what the rows hold, so it asks for the
+size of every column that could be large. A `text` column of tiny values costs one extra round
+trip and never a slow query.
+
+**Then the sizes of the page that just arrived.** Postgres keeps a value of two kilobytes or less
+in the row itself, and moves a larger one to the value store beside the table. The row is read
+anyway, so an inline value costs nothing, and only a value in the store costs a second lookup.
+
+So each column is priced by the bytes it holds **in the store** on this page. The page has a
+budget of 256 kB. The cheapest column goes first, then the next, until the budget is spent. A
+column whose values all fit in their rows costs nothing and always comes back. Every column left
+over keeps a grey stand-in naming its size, such as `9.6 kB`.
 
 **The catalog cannot answer this.** `pg_stats` reported an average width of 20 bytes for a column
 whose values on one page run to 54 kilobytes at a time. Only the page itself knows, and the sizes
 are already there.
 
-One value over the limit holds its whole column back, because the cost is per value read.
+Measured on `truck_data`, 22 columns and 11 of them large:
+
+| Page | Opens in | Left in the store |
+| --- | --- | --- |
+| 50 rows | 0.6 s | 1.1 MB, 7 columns |
+| 1000 rows | 1.1 s | 28.4 MB, 10 columns |
+
+A page of `aggregated_delivery`, whose `batches_info` holds 1.3 kB at most, opens in 0.2 s with
+every cell filled.
+
+**The second query names the rows by their key.** Running the page query again would not do. A
+SELECT without an ORDER BY promises no order, so a second run can give other rows in another
+order, and the values would land in the wrong cells.
 
 The rest arrives when you need it. A click, the value pane, the row view, an edit and a copy all
 fetch the row whole first, so a stand-in is never what you read, edit or copy. A NULL has no size
@@ -269,7 +297,10 @@ and stays a NULL.
 **This needs a primary key.** Without one there is no way to ask for a row again, so such a table
 fetches every value as before. The same holds for a table with no large column.
 
-`text`, `json`, `jsonb`, `xml`, `bytea` and every array count as large. `varchar` does not.
+**A key column always comes back whole**, whatever its type. Its value is what finds the row
+again, both to fetch the rest of the page and to open one row on a click. A key of type `text`, or
+of an unbounded `varchar`, would otherwise be replaced by its own size and leave the page with no
+key at all.
 
 ## Reading one whole row
 
@@ -301,43 +332,6 @@ A new filter, sort, or page size puts you back on the first page and forgets the
 all three make the old count wrong.
 
 The widget is the only place that sets the page size. There is no separate row field any more.
-
-### Large values
-
-A table of JSON documents and arrays used to take half a second to open a page of 25 rows,
-because the whole of every value came down the wire to fill a preview of 300 characters.
-
-The grid now asks the server for the first 301 characters of a large column and leaves the rest
-where it is:
-
-```sql
-SELECT "created_at", left("water_dosage_curve_milliliter"::text, 301) AS "…", …
-```
-
-Measured on a table of 22 columns, 11 of them large, 26 rows:
-
-| Query | Time | Text |
-| --- | --- | --- |
-| whole values | 0.430 s | 3803 KB |
-| first 301 characters | 0.050 s | 69 KB |
-
-The rest is fetched the moment you need it. Selecting the cell, opening the value pane, opening
-the row view, starting an edit and copying all fetch the row whole first, so a cut value is never
-what you read, edit or copy.
-
-**This needs a primary key.** Without one there is no way to ask for the rest of a row, so such a
-table fetches every value as before. The same holds for a table with no large column.
-
-`text`, `json`, `jsonb`, `xml`, `bytea` and every array count as large. `varchar` does not.
-
-## Reading one whole row
-
-Press **space** on a row. Every column stands under the one before it, with its name and its
-type, so a wide table needs no sideways scrolling to read a single row.
-
-- The **arrow keys** walk to the row above or below.
-- **Space** again, or **Escape**, closes it.
-- **Copy Row** puts the row on the clipboard with its header, in the table formats.
 
 ## Pages in a console
 
@@ -463,3 +457,13 @@ ROWSET_LIVE_PROFILE=AlcemyElevatedAccess-211125624762 \
 
 The tests check the token, the TLS connect, the catalog queries, the row limit, the sort, and
 that a failed statement leaves the connection open.
+
+Name a table as well, and two more suites run on it:
+
+```sh
+ROWSET_MEASURE_TABLE=truck_data ROWSET_MEASURE_LIMIT=50 ./Scripts/live-test.sh
+```
+
+`MeasureTests` times the shapes of the page query and prints its numbers with the prefix
+`MEASURE`. `LiveGridTests` opens the table through the app itself and checks that every column
+the page can afford shows its values and not their sizes.

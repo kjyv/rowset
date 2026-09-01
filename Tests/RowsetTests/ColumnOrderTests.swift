@@ -113,7 +113,9 @@ final class ColumnOrderTests: XCTestCase {
 @MainActor
 final class LargeValueTests: XCTestCase {
 
-    private func tab(_ types: [(String, String)], key: [String] = ["id"]) -> QueryTab {
+    private func tab(
+        _ types: [(String, String)], key: [String] = ["id"], lengths: [String: Int] = [:]
+    ) -> QueryTab {
         let tab = QueryTab(
             connectionID: UUID(), connectionName: "t",
             kind: .table(schema: "public", name: "truck_data"), rowLimit: 25)
@@ -123,14 +125,19 @@ final class LargeValueTests: XCTestCase {
         }
         tab.columnInfo = Dictionary(
             uniqueKeysWithValues: types.map {
-                ($0.0, ColumnInfo(name: $0.0, typeName: $0.1, isNullable: true))
+                (
+                    $0.0,
+                    ColumnInfo(
+                        name: $0.0, typeName: $0.1, isNullable: true,
+                        maximumLength: lengths[$0.0])
+                )
             })
         return tab
     }
 
     func testWhichTypesCountAsLarge() {
-        func large(_ type: String) -> Bool {
-            ColumnInfo(name: "c", typeName: type, isNullable: true).isLarge
+        func large(_ type: String, _ length: Int? = nil) -> Bool {
+            ColumnInfo(name: "c", typeName: type, isNullable: true, maximumLength: length).isLarge
         }
         XCTAssertTrue(large("jsonb"))
         XCTAssertTrue(large("json"))
@@ -139,8 +146,21 @@ final class LargeValueTests: XCTestCase {
         XCTAssertTrue(large("bytea"))
         XCTAssertFalse(large("integer"))
         XCTAssertFalse(large("timestamp with time zone"))
-        XCTAssertFalse(large("character varying"))
         XCTAssertFalse(large("uuid"))
+    }
+
+    /// A `varchar` with no length holds as much as a `text`, so the length decides.
+    func testTheLengthOfAVarcharDecides() {
+        func large(_ length: Int?) -> Bool {
+            ColumnInfo(
+                name: "c", typeName: "character varying", isNullable: true,
+                maximumLength: length
+            ).isLarge
+        }
+        XCTAssertFalse(large(50))
+        XCTAssertFalse(large(ColumnInfo.inlineValueSize))
+        XCTAssertTrue(large(ColumnInfo.inlineValueSize + 1))
+        XCTAssertTrue(large(nil))
     }
 
     /// Reading a large value is the whole cost, so the query asks for its size instead.
@@ -161,9 +181,22 @@ final class LargeValueTests: XCTestCase {
     }
 
     func testATableWithoutALargeColumnAsksForEverything() {
-        let tab = tab([("id", "integer"), ("slug", "character varying")])
+        let tab = tab(
+            [("id", "integer"), ("slug", "character varying")], lengths: ["slug": 50])
         XCTAssertFalse(tab.cutsLargeValues)
         XCTAssertTrue(tab.selectExpressions.isEmpty)
+    }
+
+    /// The key finds the row again, so the page must carry its value and not its size.
+    func testTheKeyColumnIsNeverCut() {
+        let tab = tab([("slug", "character varying"), ("payload", "jsonb")], key: ["slug"])
+        XCTAssertTrue(tab.cutsLargeValues)
+        XCTAssertFalse(tab.cuts("slug"))
+        XCTAssertTrue(tab.cuts("payload"))
+        XCTAssertEqual(tab.selectExpressions, [
+            "\"slug\"",
+            "pg_column_size(\"payload\")::text AS \"payload\"",
+        ])
     }
 
     func testASizeBecomesAPlaceholder() {
@@ -211,15 +244,34 @@ final class LargeValueTests: XCTestCase {
             ResultRow(id: 1, values: [
                 DisplayValue.make(text: "2"),
                 DisplayValue.make(text: "1900"),
-                DisplayValue.make(text: "53916"),
+                DisplayValue.make(text: "\(QueryTab.pageByteBudget * 2)"),
             ]),
         ]
 
         let worthReading = tab.markCutValues(in: &result)
-        XCTAssertEqual(worthReading, ["small"], "the largest value of the page decides")
+        XCTAssertEqual(worthReading, ["small"], "the sizes of the page decide")
     }
 
-    func testOneLargeValueHoldsTheWholeColumnBack() {
+    /// Every value here fits in its row, so reading the column costs nothing at all.
+    func testAColumnThatFitsInItsRowsIsAlwaysRead() {
+        let tab = tab([("id", "integer"), ("payload", "jsonb")])
+        var result = ResultSet()
+        result.columns = [
+            ResultColumn(id: 0, name: "id", typeName: "integer"),
+            ResultColumn(id: 1, name: "payload", typeName: "jsonb"),
+        ]
+        result.rows = (0..<1000).map { index in
+            ResultRow(id: index, values: [
+                DisplayValue.make(text: "\(index)"),
+                DisplayValue.make(text: "\(ColumnInfo.inlineValueSize)"),
+            ])
+        }
+
+        XCTAssertEqual(tab.markCutValues(in: &result), ["payload"])
+    }
+
+    /// One value over the inline size no longer holds its whole column back.
+    func testOneLargeValueDoesNotHoldTheWholeColumnBack() {
         let tab = tab([("id", "integer"), ("payload", "jsonb")])
         var result = ResultSet()
         result.columns = [
@@ -233,9 +285,31 @@ final class LargeValueTests: XCTestCase {
             ])
         }
 
-        XCTAssertTrue(
-            tab.markCutValues(in: &result).isEmpty,
-            "one value over the limit is enough to leave the column alone")
+        XCTAssertEqual(tab.markCutValues(in: &result), ["payload"])
+    }
+
+    /// The cheapest column comes first, and the page stops when it has spent its budget.
+    func testThePageSpendsItsBudgetOnTheCheapestColumns() {
+        let tab = tab([("id", "integer"), ("a", "jsonb"), ("b", "jsonb"), ("c", "jsonb")])
+        var result = ResultSet()
+        result.columns = [
+            ResultColumn(id: 0, name: "id", typeName: "integer"),
+            ResultColumn(id: 1, name: "a", typeName: "jsonb"),
+            ResultColumn(id: 2, name: "b", typeName: "jsonb"),
+            ResultColumn(id: 3, name: "c", typeName: "jsonb"),
+        ]
+        let two = QueryTab.pageByteBudget / 2 + 1
+        result.rows = [
+            ResultRow(id: 0, values: [
+                DisplayValue.make(text: "1"),
+                DisplayValue.make(text: "\(two)"),
+                DisplayValue.make(text: "\(QueryTab.pageByteBudget * 4)"),
+                DisplayValue.make(text: "\(two)"),
+            ])
+        ]
+
+        // Two halves of the budget do not both fit, and the largest never does.
+        XCTAssertEqual(tab.markCutValues(in: &result).count, 1)
     }
 
     func testAColumnOfNullsIsWorthReading() {

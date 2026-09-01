@@ -67,6 +67,18 @@ enum SQLBuilder {
         "\(quoteIdentifier(schema)).\(quoteIdentifier(table))"
     }
 
+    /// A WHERE that names an exact set of rows by their key.
+    ///
+    /// One column gives `"slug" IN ('a', 'b')`. Two give `("a", "b") IN (('1', '2'))`, which
+    /// Postgres compares row by row.
+    static func keyList(_ columns: [String], values: [[String]]) -> String {
+        let names = columns.map(quoteIdentifier).joined(separator: ", ")
+        let rows = values
+            .map { "(" + $0.map(quoteLiteral).joined(separator: ", ") + ")" }
+            .joined(separator: ", ")
+        return "(\(names)) IN (\(rows))"
+    }
+
     /// One column and the value it takes. `nil` means NULL.
     struct Assignment: Hashable, Sendable {
         var column: String
