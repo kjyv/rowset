@@ -56,6 +56,13 @@ RDS IAM needs an encrypted connection. Each bookmark picks **verify-full**, whic
 server against the bundled AWS RDS root store, **require**, which encrypts without checking the
 server, or **disable**.
 
+## Table view
+
+The first 50 rows are shown by default (change the page size in the floating pagination
+widget). A details view also shows longer values in a multiline view. Sorting and filtering can
+be set in the tool bar. Clicking the column headers also allows to change sorting by this
+column.
+
 ## Keys
 
 | Key | What it does |
@@ -77,30 +84,23 @@ server, or **disable**.
 
 ## The console
 
-A console belongs to a connection, not to a table, and each connection keeps its own list of
-saved consoles. A console takes its name from its first line, so there is no rename.
-
-A statement needs no closing semicolon. An empty line ends one as well, so two statements written
-under each other run on their own.
-
-A statement that reads is paged, so the page widget works there as well. A statement that writes
-runs as it stands.
+A console can be opened for each connection and allows manual SQL input. Each connection keeps
+its own list of persisted consoles which can be changed between using the drop down in the tool
+bar. A console takes its name from its first line, so there is no rename. Multiple statements
+can be written and run independently.
 
 ## Large values
 
-A column of JSON documents or arrays is what makes a wide table slow to open, because reading one
-such value costs far more than sending its text. Rowset asks the server for the size of such a
-column and reads the values the page can afford.
-
-A value left on the server shows a grey stand-in naming its size, such as `9.6 kB`. It arrives
-whole the moment you touch it, so a stand-in is never what you read, edit or copy.
+A column of JSON documents or arrays is what makes a wide table slow to open. Only the size of such
+a column is retrieved and only the other values are read that are small enough.
+A value not fetched yet shows a grey placeholder showing the value's size, such as `9.6 kB`. It
+will be fetched full when clicking the row.
 
 ## Changing a value
 
 Double click a cell, or press Return on it. Change as many cells as you like, then press
-**Submit**: a sheet shows the exact SQL, and nothing reaches the server before you press **Run**.
-The statements share one transaction, and any statement that does not match exactly one row rolls
-the whole batch back.
+**Submit** in the toolbar. The statements share one transaction, and any statement that does
+not match exactly one row rolls the whole batch back.
 
 A table without a primary key cannot be edited, because an UPDATE needs a WHERE that finds one
 row.
@@ -127,6 +127,13 @@ open Rowset.xcodeproj
 The script installs XcodeGen if it is missing, downloads the RDS certificate bundle if it is
 missing, and writes the Xcode project. `Rowset.xcodeproj` is not in git, and `project.yml`
 describes it.
+
+To build the app itself:
+
+```sh
+./Scripts/build-release.sh            # writes ./Rowset.app
+./Scripts/build-release.sh --install  # writes it and copies it to /Applications
+```
 
 A tag that starts with `v` builds a release. The workflow in `.github/workflows/release.yml`
 generates the project, runs the tests, builds, and attaches a DMG to the release.

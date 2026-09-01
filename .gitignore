@@ -3,6 +3,7 @@ Rowset.xcodeproj/
 
 # Xcode
 build/
+Rowset.app
 DerivedData/
 *.xcworkspace/xcuserdata/
 xcuserdata/
