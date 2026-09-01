@@ -1036,11 +1036,14 @@ final class OverdrawTableView: NSTableView {
     /// The step one key means, in rows and columns.
     ///
     /// The arrow keys and the letters of vi both move the cell, because one hand or the other is
-    /// already there. A key counts on its own or with shift only, and shift grows the block.
+    /// already there. Shift grows the block, and Command, Option or Control give the key back:
     /// Command-L belongs to whatever else wants it, and so does Command-Left.
+    ///
+    /// The rule names the three that block. It cannot ask for no modifier at all, because macOS
+    /// reports `.function` and `.numericPad` on every arrow key.
     static func step(for event: NSEvent) -> (rows: Int, columns: Int)? {
-        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        guard modifiers.subtracting(.shift).isEmpty else { return nil }
+        let blocking: NSEvent.ModifierFlags = [.command, .option, .control]
+        guard event.modifierFlags.intersection(blocking).isEmpty else { return nil }
 
         switch event.keyCode {
         case 123: return (0, -1)

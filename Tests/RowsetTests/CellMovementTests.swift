@@ -74,11 +74,14 @@ final class CellMovementTests: XCTestCase {
             keyCode: keyCode, characters: characters, modifiers: modifiers))
     }
 
+    /// macOS reports these on every arrow key, so a test without them tests nothing.
+    private let arrowFlags: NSEvent.ModifierFlags = [.function, .numericPad]
+
     func testTheArrowKeysMoveTheCell() {
-        XCTAssertEqual(step(126, "\u{F700}")?.rows, -1)
-        XCTAssertEqual(step(125, "\u{F701}")?.rows, 1)
-        XCTAssertEqual(step(123, "\u{F702}")?.columns, -1)
-        XCTAssertEqual(step(124, "\u{F703}")?.columns, 1)
+        XCTAssertEqual(step(126, "\u{F700}", arrowFlags)?.rows, -1)
+        XCTAssertEqual(step(125, "\u{F701}", arrowFlags)?.rows, 1)
+        XCTAssertEqual(step(123, "\u{F702}", arrowFlags)?.columns, -1)
+        XCTAssertEqual(step(124, "\u{F703}", arrowFlags)?.columns, 1)
     }
 
     func testTheLettersOfViMoveTheCell() {
@@ -91,7 +94,7 @@ final class CellMovementTests: XCTestCase {
     /// Shift grows the block, so it still moves the cell.
     func testShiftKeepsTheStep() {
         XCTAssertEqual(step(38, "j", .shift)?.rows, 1)
-        XCTAssertEqual(step(125, "\u{F701}", .shift)?.rows, 1)
+        XCTAssertEqual(step(125, "\u{F701}", arrowFlags.union(.shift))?.rows, 1)
     }
 
     /// A letter with Command belongs to whatever else wants it.
@@ -103,9 +106,14 @@ final class CellMovementTests: XCTestCase {
 
     /// An arrow with Command or Option belongs to whatever else wants it, the same as a letter.
     func testAnArrowWithAModifierIsNoStep() {
-        XCTAssertNil(step(123, "\u{F702}", .command))
-        XCTAssertNil(step(124, "\u{F703}", .option))
-        XCTAssertNil(step(125, "\u{F701}", .control))
+        XCTAssertNil(step(123, "\u{F702}", arrowFlags.union(.command)))
+        XCTAssertNil(step(124, "\u{F703}", arrowFlags.union(.option)))
+        XCTAssertNil(step(125, "\u{F701}", arrowFlags.union(.control)))
+    }
+
+    /// Caps lock changes no meaning. The letter still moves the cell.
+    func testCapsLockKeepsTheStep() {
+        XCTAssertEqual(step(38, "J", .capsLock)?.rows, 1)
     }
 
     func testAnotherLetterIsNoStep() {
