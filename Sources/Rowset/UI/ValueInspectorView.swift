@@ -210,10 +210,6 @@ private struct ValueTextView: NSViewRepresentable {
         // The find bar belongs to NSTextView. It gives search, next, previous, and a match count.
         textView.usesFindBar = true
         textView.isIncrementalSearchingEnabled = true
-        // Ask for the storage now, while the view is empty. The first read of it moves the view
-        // from TextKit 2 back to TextKit 1, and that rebuild threw away the colours of the first
-        // value, so only the second one you clicked came out coloured.
-        _ = textView.textStorage
         context.coordinator.textView = textView
         return scrollView
     }
@@ -236,8 +232,9 @@ private struct ValueTextView: NSViewRepresentable {
 
     /// The text with its colours, built in one piece.
     ///
-    /// The whole string goes in at once. Setting the plain string and adding the colours after it
-    /// leaves a window in which the view can lay the text out uncoloured.
+    /// The whole string goes in at once, so the view never holds a text that is half painted.
+    /// Reading `textStorage` is safe here: only `layoutManager` moves an `NSTextView` back to
+    /// TextKit 1, and this pane needs TextKit 2 to lay out a large document by the part it draws.
     ///
     /// A cell can hold a large document, so a long one stays plain. `SyntaxStyle.lengthLimit`
     /// says where that starts.

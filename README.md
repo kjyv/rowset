@@ -436,10 +436,10 @@ whole grid again.
 **The value pane uses `NSTextView`.** SwiftUI lays out a whole string at once, which stalls on a
 large document. `NSTextView` lays out only the part it draws.
 
-**The value pane sets its text as one attributed string.** The first read of `textStorage` moves
-an `NSTextView` from TextKit 2 back to TextKit 1, and that rebuild threw away colours added right
-after the plain string, so only the second value you clicked came out coloured. The pane asks for
-the storage once while the view is empty, and every value goes in coloured already.
+**The value pane sets its text as one attributed string**, so the view never holds a text that is
+half painted. It reads `textStorage` to do it, which is safe: only `layoutManager` moves an
+`NSTextView` back to TextKit 1, and the pane needs TextKit 2 to lay out a large document by the
+part it draws.
 
 **One token type serves SQL and JSON.** `SQLLexer` and `JSONLexer` both give a `SyntaxToken`, and
 `SyntaxStyle` paints it. The editor and the value pane then share one colour table. A JSON value
