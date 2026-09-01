@@ -3,11 +3,11 @@ import XCTest
 
 final class SQLLexerTests: XCTestCase {
 
-    private func kinds(_ sql: String) -> [SQLTokenKind] {
+    private func kinds(_ sql: String) -> [SyntaxKind] {
         SQLLexer.tokens(in: sql).map(\.kind)
     }
 
-    private func token(_ sql: String, at index: Int) -> SQLToken {
+    private func token(_ sql: String, at index: Int) -> SyntaxToken {
         SQLLexer.tokens(in: sql)[index]
     }
 

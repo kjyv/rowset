@@ -14,7 +14,6 @@ final class SessionStateTests: XCTestCase {
         let state = store.load()
         XCTAssertTrue(state.tabs.isEmpty)
         XCTAssertTrue(state.expandedBookmarks.isEmpty)
-        XCTAssertTrue(state.inspectorVisible)
         XCTAssertEqual(state.inspectorHeight, 190)
     }
 
@@ -33,11 +32,11 @@ final class SessionStateTests: XCTestCase {
         state.tabs = [
             TabState(
                 bookmarkID: bookmarkID, schema: "public", table: "component",
-                filterText: "slug = 'x'", orderByText: "created_at DESC", rowLimit: 25),
+                filterText: "slug = 'x'", orderByText: "created_at DESC",
+                showsValuePane: false, rowLimit: 25),
             TabState(bookmarkID: bookmarkID, sqlText: "SELECT 1", rowLimit: 50),
         ]
         state.selectedTabIndex = 1
-        state.inspectorVisible = false
         state.inspectorHeight = 260
 
         let store = SessionStore(fileURL: url)
@@ -51,7 +50,7 @@ final class SessionStateTests: XCTestCase {
         XCTAssertEqual(read.tabs[0].orderByText, "created_at DESC")
         XCTAssertEqual(read.tabs[0].rowLimit, 25)
         XCTAssertEqual(read.selectedTabIndex, 1)
-        XCTAssertFalse(read.inspectorVisible)
+        XCTAssertEqual(read.tabs[0].showsValuePane, false)
         XCTAssertEqual(read.inspectorHeight, 260)
     }
 

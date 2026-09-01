@@ -17,6 +17,8 @@ struct TabState: Codable, Sendable {
     var orderByText: String = ""
     var sqlText: String = ""
     var bufferID: UUID?
+    /// `nil` in a file written before the pane belonged to the tab.
+    var showsValuePane: Bool?
     var rowLimit: Int = 50
 
     var isSQLTab: Bool { schema == nil || table == nil }
@@ -31,7 +33,6 @@ struct SessionState: Codable, Sendable {
     var expandedNodes: [String: [NodePath]] = [:]
     var tabs: [TabState] = []
     var selectedTabIndex: Int?
-    var inspectorVisible: Bool = true
     var inspectorHeight: Double = 190
     var sidebarVisible: Bool = true
 

@@ -163,7 +163,8 @@ struct ValueInspectorView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ValueTextView(text: displayText(for: value), findRequest: findRequest)
+                ValueTextView(
+                    text: displayText(for: value), isJSON: isJSON, findRequest: findRequest)
             }
         } else {
             Text("Click a cell to read its whole value. Double click to open this pane.")
@@ -185,6 +186,8 @@ struct ValueInspectorView: View {
 /// brings the find bar that Command-F opens.
 private struct ValueTextView: NSViewRepresentable {
     let text: String
+    /// True when the text is JSON, which the view then colours.
+    let isJSON: Bool
     let findRequest: FindRequest
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -199,7 +202,7 @@ private struct ValueTextView: NSViewRepresentable {
         textView.isEditable = false
         textView.isSelectable = true
         textView.drawsBackground = false
-        textView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        textView.font = SyntaxStyle.font
         textView.textContainerInset = NSSize(width: 6, height: 6)
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isGrammarCheckingEnabled = false
@@ -217,6 +220,7 @@ private struct ValueTextView: NSViewRepresentable {
 
         if textView.string != text {
             textView.string = text
+            paint(textView)
             textView.scroll(.zero)
         }
 
@@ -224,6 +228,23 @@ private struct ValueTextView: NSViewRepresentable {
             context.coordinator.lastFindCounter = findRequest.counter
             context.coordinator.showFindBar()
         }
+    }
+
+    /// Colours the JSON, once for the whole text.
+    ///
+    /// A cell can hold a large document, so a long one stays plain. `SyntaxStyle.lengthLimit`
+    /// says where that starts.
+    private func paint(_ textView: NSTextView) {
+        guard let storage = textView.textStorage else { return }
+        let full = NSRange(location: 0, length: storage.length)
+
+        storage.beginEditing()
+        storage.setAttributes(
+            [.font: SyntaxStyle.font, .foregroundColor: NSColor.labelColor], range: full)
+        if isJSON, storage.length <= SyntaxStyle.lengthLimit {
+            SyntaxStyle.paint(JSONLexer.tokens(in: text), in: storage)
+        }
+        storage.endEditing()
     }
 
     @MainActor

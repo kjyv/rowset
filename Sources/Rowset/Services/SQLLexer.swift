@@ -1,26 +1,5 @@
 import Foundation
 
-/// What a piece of SQL text is.
-enum SQLTokenKind: Sendable, Hashable {
-    case keyword
-    case identifier
-    /// A name in double quotes.
-    case quotedIdentifier
-    /// A literal in single quotes, or a dollar quoted body.
-    case string
-    case number
-    /// A placeholder such as `$1`.
-    case parameter
-    case comment
-    case punctuation
-}
-
-struct SQLToken: Sendable, Hashable {
-    var range: NSRange
-    var kind: SQLTokenKind
-    var text: String
-}
-
 /// Reads SQL text into tokens.
 ///
 /// One pass serves two jobs. Colouring needs to know what each piece is, and telling statements
@@ -49,20 +28,20 @@ enum SQLLexer {
         "where", "window", "with",
     ]
 
-    static func tokens(in text: String) -> [SQLToken] {
+    static func tokens(in text: String) -> [SyntaxToken] {
         let characters = Array(text)
         let source = text as NSString
-        var tokens: [SQLToken] = []
+        var tokens: [SyntaxToken] = []
 
         var index = 0
         var offset = 0
 
         func width(_ character: Character) -> Int { String(character).utf16.count }
 
-        func append(_ kind: SQLTokenKind, from start: Int, to end: Int) {
+        func append(_ kind: SyntaxKind, from start: Int, to end: Int) {
             guard end > start else { return }
             let range = NSRange(location: start, length: end - start)
-            tokens.append(SQLToken(range: range, kind: kind, text: source.substring(with: range)))
+            tokens.append(SyntaxToken(range: range, kind: kind, text: source.substring(with: range)))
         }
 
         while index < characters.count {

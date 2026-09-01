@@ -22,12 +22,12 @@ struct ResultPane: View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
                 grid
-                if model.isInspectorVisible {
+                if tab.showsValuePane {
                     handle
                     ValueInspectorView(
                         column: tab.selectedColumn,
                         value: tab.selectedValue,
-                        onClose: { model.isInspectorVisible = false },
+                        onClose: { tab.showsValuePane = false },
                         editing: inspectorTarget)
                         .frame(height: paneHeight(in: geometry.size.height))
                 }
@@ -109,27 +109,27 @@ struct ResultPane: View {
                 Task { await model.loadFullRow(rowID, in: tab) }
             },
             onNeedFullRow: { await model.loadFullRow($0, in: tab) },
-            onOpenValue: { model.isInspectorVisible = true },
+            onOpenValue: { tab.showsValuePane = true },
             onSortChange: onSortChange,
             editing: editable ? tab : nil)
     }
 }
 
-/// The button that shows or hides the value pane.
+/// The button that shows or hides the value pane of one tab.
 struct InspectorToggle: View {
-    let model: AppModel
+    @Bindable var tab: QueryTab
 
     var body: some View {
         Button {
-            model.isInspectorVisible.toggle()
+            tab.showsValuePane.toggle()
         } label: {
             // The icon shows what the button does, not what the pane is doing. A filled band
             // means the click brings the pane, and a plain rectangle means it takes it away.
-            Image(systemName: model.isInspectorVisible
+            Image(systemName: tab.showsValuePane
                   ? "rectangle"
                   : "rectangle.bottomthird.inset.filled")
         }
         .buttonStyle(.borderless)
-        .help(model.isInspectorVisible ? "Hide the value pane" : "Show the value pane")
+        .help(tab.showsValuePane ? "Hide the value pane" : "Show the value pane")
     }
 }

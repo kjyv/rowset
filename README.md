@@ -12,8 +12,9 @@ connection, look at the tables, and read some rows with a filter and a sort.
   `aws rds generate-db-auth-token` at every connect. A password goes into the login keychain.
 - Shows schemas, tables, views, and columns in a tree on the left.
 - Opens a table in a tab. Each tab has a `WHERE` field, sortable columns, and pages.
-- Shows the whole value of the cell you click in a pane under the grid. It formats JSON and
-  keeps the key order that the server sent.
+  **Command-R** fetches the page again.
+- Shows the whole value of the cell you click in a pane under the grid. It formats JSON, colours
+  it, and keeps the key order that the server sent.
 - Copies a value, a column name, or a whole row from the right click menu of a cell.
 - Changes a value and sends the edits together, after it shows you the SQL.
 - Runs SQL in a console, one statement at a time or all of them, with the words coloured and the
@@ -363,8 +364,7 @@ Editing the statement, or moving the caret to another one, starts the pages and 
    cell. A boolean opens a menu of `true`, `false`, and `NULL` where the column takes one. A
    value of more than one line opens in the value pane, already in edit mode.
 
-   **Command-Return** opens the value pane without starting an edit. In a console that key runs
-   the statement, so use the double click there.
+   **Shift-Return** opens the value pane without starting an edit.
 2. Change as many cells as you want. Each one turns yellow, and a bar counts them.
    Select cells and press **Delete** to set them to NULL. A column that takes no NULL is left
    alone, so a block of mixed columns nulls only the ones it may.
@@ -430,6 +430,13 @@ whole grid again.
 
 **The value pane uses `NSTextView`.** SwiftUI lays out a whole string at once, which stalls on a
 large document. `NSTextView` lays out only the part it draws.
+
+**One token type serves SQL and JSON.** `SQLLexer` and `JSONLexer` both give a `SyntaxToken`, and
+`SyntaxStyle` paints it. The editor and the value pane then share one colour table. A JSON value
+over 200,000 characters stays plain, because thousands of colour runs make the pane stall.
+
+**The value pane belongs to the tab.** A console opens without it, and a table tab opens with it.
+It used to belong to the window, so a new console took the pane of the table you came from.
 
 **The app is not sandboxed.** It reads `~/.aws/config` and runs the `aws` binary.
 

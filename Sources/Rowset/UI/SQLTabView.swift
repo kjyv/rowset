@@ -47,7 +47,7 @@ struct SQLTabView: View {
 
                 Divider().frame(height: 16)
 
-                InspectorToggle(model: model)
+                InspectorToggle(tab: tab)
 
                 Spacer()
 

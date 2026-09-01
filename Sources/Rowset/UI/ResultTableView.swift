@@ -53,7 +53,7 @@ struct ResultTableView: NSViewRepresentable {
         tableView.onReturn = { [weak coordinator] in
             coordinator?.editSelection()
         }
-        tableView.onCommandReturn = { [weak coordinator] in
+        tableView.onShiftReturn = { [weak coordinator] in
             coordinator?.parent.onOpenValue()
         }
 
@@ -919,7 +919,7 @@ final class OverdrawTableView: NSTableView {
     var onDelete: (() -> Void)?
     var onSpace: (() -> Void)?
     var onReturn: (() -> Void)?
-    var onCommandReturn: (() -> Void)?
+    var onShiftReturn: (() -> Void)?
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -972,8 +972,8 @@ final class OverdrawTableView: NSTableView {
 
         if event.keyCode == 36 {
             let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            if modifiers == .command, onCommandReturn != nil {
-                onCommandReturn?()
+            if modifiers == .shift, onShiftReturn != nil {
+                onShiftReturn?()
                 return
             }
             if modifiers.isEmpty, onReturn != nil {

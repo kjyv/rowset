@@ -34,6 +34,7 @@ struct TableTabView: View {
             } label: {
                 Image(systemName: "arrow.clockwise")
             }
+            .keyboardShortcut("r", modifiers: .command)
             .help("Fetch this page again")
             .disabled(tab.isRunning)
 
@@ -77,7 +78,7 @@ struct TableTabView: View {
             Divider().frame(height: 16)
 
             consoleButton
-            InspectorToggle(model: model)
+            InspectorToggle(tab: tab)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)

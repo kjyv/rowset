@@ -22,7 +22,7 @@ struct SQLEditorView: NSViewRepresentable {
         guard let textView = scrollView.documentView as? NSTextView else { return scrollView }
         textView.isEditable = true
         textView.isRichText = false
-        textView.font = Style.font
+        textView.font = SyntaxStyle.font
         textView.textContainerInset = NSSize(width: 6, height: 6)
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
@@ -49,23 +49,9 @@ struct SQLEditorView: NSViewRepresentable {
         }
     }
 
-    /// How the editor looks. One place, so a colour is changed once.
+    /// What the editor adds to the shared style.
     @MainActor
     enum Style {
-        static let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-
-        static func color(for kind: SQLTokenKind) -> NSColor {
-            switch kind {
-            case .keyword: NSColor.systemPurple
-            case .string: NSColor.systemRed
-            case .number: NSColor.systemTeal
-            case .comment: NSColor.secondaryLabelColor
-            case .quotedIdentifier: NSColor.systemBlue
-            case .parameter: NSColor.systemOrange
-            case .identifier, .punctuation: NSColor.labelColor
-            }
-        }
-
         /// The band behind the statement the caret is in.
         static let currentStatement = NSColor.controlAccentColor.withAlphaComponent(0.12)
     }
@@ -107,7 +93,7 @@ struct SQLEditorView: NSViewRepresentable {
 
             storage.beginEditing()
             storage.setAttributes(
-                [.font: Style.font, .foregroundColor: NSColor.labelColor], range: full)
+                [.font: SyntaxStyle.font, .foregroundColor: NSColor.labelColor], range: full)
 
             // The band goes on first, so a colour sits over it and not under it.
             let statements = SQLStatementSplitter.statements(in: source)
@@ -118,10 +104,7 @@ struct SQLEditorView: NSViewRepresentable {
                     .backgroundColor, value: Style.currentStatement, range: current.range)
             }
 
-            for token in SQLLexer.tokens(in: source) where token.range.upperBound <= storage.length {
-                storage.addAttribute(
-                    .foregroundColor, value: Style.color(for: token.kind), range: token.range)
-            }
+            SyntaxStyle.paint(SQLLexer.tokens(in: source), in: storage)
 
             storage.endEditing()
         }

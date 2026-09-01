@@ -94,8 +94,7 @@ final class AppModel {
     /// window carries no toolbar and so no toggle of its own.
     var isSidebarVisible = true { didSet { saveSession() } }
 
-    /// The value pane belongs to the window, so every tab shows it the same way.
-    var isInspectorVisible = true { didSet { saveSession() } }
+    /// The height of the value pane. Each tab decides whether it shows one.
     var inspectorHeight: Double = 190 { didSet { saveSession() } }
 
     private let rowLimitKey = "defaultRowLimit"
@@ -113,7 +112,6 @@ final class AppModel {
     /// Reads the last session and puts the window back the way you left it.
     func restoreSession() async {
         let state = sessionStore.load()
-        isInspectorVisible = state.inspectorVisible
         inspectorHeight = state.inspectorHeight
         isSidebarVisible = state.sidebarVisible
         syncConnections()
@@ -141,6 +139,8 @@ final class AppModel {
                     rowLimit: tabState.rowLimit)
                 adoptBuffer(tab, connection: connection, preferred: tabState.bufferID)
             }
+            // A file written before the pane belonged to the tab says nothing about it.
+            if let shows = tabState.showsValuePane { tab.showsValuePane = shows }
             tabs.append(tab)
         }
         if let index = state.selectedTabIndex, tabs.indices.contains(index) {
@@ -181,7 +181,6 @@ final class AppModel {
             expandedNodes: nodes,
             tabs: tabs.map(\.state),
             selectedTabIndex: tabs.firstIndex { $0.id == selectedTabID },
-            inspectorVisible: isInspectorVisible,
             inspectorHeight: inspectorHeight,
             sidebarVisible: isSidebarVisible)
     }
