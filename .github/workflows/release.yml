@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
 
+# The repository hands a workflow a read-only token by default. Writing a release needs more,
+# and the job asks for that one scope and no other.
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-15
