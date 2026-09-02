@@ -223,13 +223,13 @@ final class AppModel {
         }
     }
 
+    /// Closes the connection and every tab that reads through it.
+    ///
+    /// The tabs go whether the connection is still there or not. They used to go only inside the
+    /// guard below, so a bookmark that was already deleted left its tabs behind.
     func disconnect(bookmarkID: UUID) async {
-        guard let model = connections[bookmarkID] else { return }
-        await model.disconnect()
-        tabs.removeAll { $0.connectionID == bookmarkID }
-        if let selectedTabID, !tabs.contains(where: { $0.id == selectedTabID }) {
-            self.selectedTabID = tabs.first?.id
-        }
+        if let model = connections[bookmarkID] { await model.disconnect() }
+        closeTabs(of: bookmarkID)
     }
 
     /// Drops the cached connection so the next connect picks up the edited fields.
@@ -239,9 +239,31 @@ final class AppModel {
     }
 
     /// Drops a connection and everything that belonged to it.
+    ///
+    /// A tab of a connection that is gone can fetch nothing, and its refresh button and its
+    /// editor would lie about what is on screen. The saved consoles go last, so a console tab
+    /// writes nothing back after they are removed.
     func forgetEverything(bookmarkID: UUID) async {
         await forget(bookmarkID: bookmarkID)
         bufferStore.removeAll(for: bookmarkID)
+    }
+
+    /// Deletes a connection: the tabs, the saved consoles, the password and the bookmark.
+    ///
+    /// One call, in one order. The sidebar used to remove the bookmark itself and leave the rest
+    /// to a task. The bookmark went first, `syncConnections` dropped the connection with it, and
+    /// the task then found nothing to close.
+    func deleteConnection(bookmarkID: UUID) async {
+        await forgetEverything(bookmarkID: bookmarkID)
+        store.remove(id: bookmarkID)
+        if selectedBookmarkID == bookmarkID { sidebarSelection = nil }
+    }
+
+    /// Closes every tab of one connection.
+    func closeTabs(of bookmarkID: UUID) {
+        for tab in tabs where tab.connectionID == bookmarkID {
+            closeTab(id: tab.id)
+        }
     }
 
     // MARK: - Tabs
