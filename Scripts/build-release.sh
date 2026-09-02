@@ -37,8 +37,9 @@ ditto "$built" Rowset.app
 echo "Wrote $PWD/Rowset.app"
 
 if [ "$install" = "yes" ]; then
-    if pgrep -x Rowset >/dev/null 2>&1; then
-        echo "Rowset is running. Quit it and run this again." >&2
+    # Only the bundle this replaces matters. A build running from Xcode is another file.
+    if pgrep -f "^/Applications/Rowset.app/Contents/MacOS/Rowset" >/dev/null 2>&1; then
+        echo "The app in /Applications is running. Quit it and run this again." >&2
         exit 1
     fi
     rm -rf /Applications/Rowset.app
