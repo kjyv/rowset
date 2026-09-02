@@ -157,7 +157,8 @@ To build the app itself:
 ```
 
 A tag that starts with `v` builds a release. The workflow in `.github/workflows/release.yml`
-generates the project, runs the tests, builds, and attaches a DMG to the release.
+generates the project, runs the tests, builds, and attaches a DMG to the release. The version in
+the About window comes from `MARKETING_VERSION` in `project.yml`, so raise that before you tag.
 
 The app icon is drawn in code. Run `./Scripts/make-icon.sh` after a change to it. The icns is
 committed, so a normal build needs no extra step.
