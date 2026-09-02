@@ -158,7 +158,7 @@ struct BookmarkSection: View {
     private var isExpanded: Binding<Bool> {
         Binding(
             get: { model.connection(id: bookmark.id)?.isExpanded ?? false },
-            set: { model.connection(id: bookmark.id)?.isExpanded = $0 })
+            set: { model.setExpanded($0, bookmarkID: bookmark.id) })
     }
 
     var body: some View {
@@ -170,11 +170,6 @@ struct BookmarkSection: View {
             label
                 .tag(SidebarSelection.bookmark(bookmark.id))
                 .contextMenu { connectionMenu }
-        }
-        .onChange(of: isExpanded.wrappedValue) { _, expanded in
-            model.saveSession()
-            guard expanded, let connection, connection.state == .disconnected else { return }
-            Task { await model.connect(to: bookmark.id) }
         }
     }
 

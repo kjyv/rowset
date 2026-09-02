@@ -1,7 +1,7 @@
 import XCTest
 @testable import Rowset
 
-/// What goes when a connection goes.
+/// What happens when a connection arrives, and what goes when it leaves.
 @MainActor
 final class DeleteConnectionTests: XCTestCase {
 
@@ -32,6 +32,45 @@ final class DeleteConnectionTests: XCTestCase {
         let connection = ConnectionModel(bookmark: bookmark)
         model.connections[connection.id] = connection
         return (model, connection)
+    }
+
+    /// A bookmark you have just added has no connection model yet. The row must still open.
+    func testANewBookmarkOpensWithoutAConnectFirst() {
+        let (model, _) = app()
+        var fresh = Bookmark()
+        fresh.name = "fresh"
+        fresh.driver = .sqlite
+        fresh.filePath = directory.appendingPathComponent("fresh.sqlite").path
+        model.store.upsert(fresh)
+        XCTAssertNil(model.connections[fresh.id], "nothing has synced yet")
+
+        model.openSidebarSelection(.bookmark(fresh.id))
+
+        let connection = model.connections[fresh.id]
+        XCTAssertNotNil(connection, "the row makes its connection")
+        XCTAssertEqual(connection?.isExpanded, true)
+    }
+
+    /// The chevron of such a row writes through the same path.
+    func testTheChevronOfANewBookmarkOpensItToo() {
+        let (model, _) = app()
+        var fresh = Bookmark()
+        fresh.name = "fresh"
+        fresh.driver = .sqlite
+        fresh.filePath = directory.appendingPathComponent("fresh.sqlite").path
+        model.store.upsert(fresh)
+
+        model.setExpanded(true, bookmarkID: fresh.id)
+        XCTAssertEqual(model.connections[fresh.id]?.isExpanded, true)
+
+        model.setExpanded(false, bookmarkID: fresh.id)
+        XCTAssertEqual(model.connections[fresh.id]?.isExpanded, false)
+    }
+
+    func testAnUnknownBookmarkOpensNothing() {
+        let (model, _) = app()
+        model.setExpanded(true, bookmarkID: UUID())
+        XCTAssertEqual(model.connections.count, 1)
     }
 
     func testDeletingAConnectionClosesItsTabs() async {

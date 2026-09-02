@@ -214,6 +214,21 @@ final class AppModel {
         connections[id]
     }
 
+    /// Opens or closes a connection row, and connects it when it opens.
+    ///
+    /// It makes the connection first. A bookmark you have just added has none until
+    /// `syncConnections` runs, and a row that finds no connection does nothing at all: the
+    /// chevron writes into nothing and the double click returns. Only the context menu worked,
+    /// because `connect` makes the connection itself.
+    func setExpanded(_ expanded: Bool, bookmarkID: UUID) {
+        syncConnections()
+        guard let connection = connections[bookmarkID] else { return }
+        connection.isExpanded = expanded
+        saveSession()
+        guard expanded, connection.state == .disconnected else { return }
+        Task { await connect(to: bookmarkID) }
+    }
+
     func connect(to bookmarkID: UUID) async {
         syncConnections()
         guard let model = connections[bookmarkID] else { return }
@@ -416,11 +431,9 @@ final class AppModel {
     func openSidebarSelection() {
         switch sidebarSelection {
         case .bookmark(let id):
+            syncConnections()
             guard let connection = connections[id] else { return }
-            connection.isExpanded.toggle()
-            if connection.isExpanded, connection.state == .disconnected {
-                Task { await connect(to: id) }
-            }
+            setExpanded(!connection.isExpanded, bookmarkID: id)
 
         case .node(let nodeID, let bookmarkID):
             guard let connection = connections[bookmarkID],
