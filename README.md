@@ -6,6 +6,8 @@ Pick a saved connection, read a table, filter and sort it, change a value, and r
 signs in to an RDS instance with an IAM token that it fetches at every connect, to any other
 Postgres server with a user and a password, or to a SQLite file on this machine.
 
+![Rowset showing a table of the demo database](Screenshot.png)
+
 ## What it does
 
 - Saves connections as bookmarks. The bookmark file holds no secret.
@@ -122,6 +124,19 @@ row.
 | Window frame | `UserDefaults` for `tech.alcemy.Rowset` |
 
 The bookmark file is plain JSON. You can edit it by hand and copy it to another machine.
+
+## The demo database
+
+`Demo/demo.sqlite` holds the deliveries of three concrete plants, which is what the screenshot
+shows. Open it as a SQLite connection to try the app without a server of your own.
+
+```sh
+./Scripts/make-demo-db.sh    # writes it again
+./Scripts/make-screenshot.sh # opens it and takes the screenshot above
+```
+
+The screenshot script opens the demo in a profile of its own, through `ROWSET_SUPPORT_DIR`, so it
+never touches the connections you work with.
 
 ## Build
 

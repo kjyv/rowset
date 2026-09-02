@@ -125,8 +125,7 @@ final class SessionStore {
     }
 
     static func defaultFileURL() -> URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return base.appending(path: "Rowset/session.json")
+        SupportDirectory.file("session.json")
     }
 
     func load() -> SessionState {

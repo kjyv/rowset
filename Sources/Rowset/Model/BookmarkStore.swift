@@ -19,8 +19,7 @@ final class BookmarkStore {
     }
 
     static func defaultFileURL() -> URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return base.appending(path: "Rowset/bookmarks.json")
+        SupportDirectory.file("bookmarks.json")
     }
 
     func load() {

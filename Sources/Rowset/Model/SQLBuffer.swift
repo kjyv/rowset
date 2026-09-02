@@ -62,8 +62,7 @@ final class BufferStore {
     }
 
     static func defaultFileURL() -> URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return base.appending(path: "Rowset/consoles.json")
+        SupportDirectory.file("consoles.json")
     }
 
     // MARK: - Reading
