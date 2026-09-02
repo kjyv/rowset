@@ -29,13 +29,21 @@ final class ConnectionModel: Identifiable {
     /// Set when the AWS login expired. The view turns this into a sheet.
     var expiredLogin: AWSAuthError?
 
-    private let session: PostgresSession
+    private let session: any DatabaseSession
 
     init(bookmark: Bookmark) {
         self.id = bookmark.id
         self.bookmark = bookmark
-        self.session = PostgresSession(bookmark: bookmark)
+        self.session = DatabaseSessionFactory.session(for: bookmark)
     }
+
+    /// True when this connection can be asked for the size of a value without reading it.
+    ///
+    /// Postgres answers with `pg_column_size`, which reads the pointer and not the value beside
+    /// the table. A SQLite file is on this machine, so nothing there is worth leaving behind.
+    var measuresValueSize: Bool { bookmark.driver == .postgres }
+
+    var driver: Driver { bookmark.driver }
 
     // MARK: - Connect
 
@@ -80,7 +88,7 @@ final class ConnectionModel: Identifiable {
     // MARK: - Tree
 
     private func loadSchemas() async throws {
-        let rows = try await session.queryStrings(CatalogQueries.schemas)
+        let rows = try await session.queryStrings(CatalogQueries.schemas(bookmark.driver))
         schemas = rows.compactMap { row in
             guard let name = row.first else { return nil }
             return TreeNode(kind: .schema(name: name))
@@ -97,7 +105,7 @@ final class ConnectionModel: Identifiable {
         do {
             switch node.kind {
             case .schema(let name):
-                let rows = try await session.queryStrings(CatalogQueries.tables(schema: name))
+                let rows = try await session.queryStrings(CatalogQueries.tables(bookmark.driver, schema: name))
                 node.children = rows.compactMap { row in
                     guard row.count >= 2 else { return nil }
                     let isView = row[1].uppercased().contains("VIEW")
@@ -141,7 +149,7 @@ final class ConnectionModel: Identifiable {
     }
 
     private func columnNodes(schema: String, table: String) async throws -> [TreeNode] {
-        let rows = try await session.queryStrings(CatalogQueries.columns(schema: schema, table: table))
+        let rows = try await session.queryStrings(CatalogQueries.columns(bookmark.driver, schema: schema, table: table))
         return rows.enumerated().compactMap { position, row in
             guard row.count >= 3 else { return nil }
             return TreeNode(kind: .column(
@@ -157,7 +165,7 @@ final class ConnectionModel: Identifiable {
     /// What the catalog says about every column of one table.
     func columnDetails(schema: String, table: String) async -> [ColumnInfo] {
         guard let rows = try? await session.queryStrings(
-            CatalogQueries.columns(schema: schema, table: table))
+            CatalogQueries.columns(bookmark.driver, schema: schema, table: table))
         else { return [] }
         return rows.compactMap { row in
             guard row.count >= 3 else { return nil }
@@ -191,7 +199,7 @@ final class ConnectionModel: Identifiable {
         isLoadingTables = true
         defer { isLoadingTables = false }
 
-        guard let rows = try? await session.queryStrings(CatalogQueries.allTables) else { return }
+        guard let rows = try? await session.queryStrings(CatalogQueries.allTables(bookmark.driver)) else { return }
         allTables = rows.compactMap { row in
             guard row.count >= 3 else { return nil }
             return TableRef(

@@ -56,7 +56,7 @@ final class MeasureTests: XCTestCase {
 
     private func columns(_ session: PostgresSession, table: String) async throws -> [ColumnInfo] {
         let rows = try await session.queryStrings(
-            CatalogQueries.columns(schema: "public", table: table))
+            CatalogQueries.columns(.postgres, schema: "public", table: table))
         return rows.compactMap { row in
             guard row.count >= 3 else { return nil }
             let declared = row.count >= 4 ? (Int(row[3]) ?? -1) : -1
@@ -73,7 +73,7 @@ final class MeasureTests: XCTestCase {
         let table = try measureTable()
         let session = PostgresSession(bookmark: try liveBookmark())
         try await session.connect()
-        defer { Task { await session.close() } }
+        addTeardownBlock { await session.close() }
 
         let start = DispatchTime.now()
         let rows = try await session.queryStrings("""
@@ -106,7 +106,7 @@ final class MeasureTests: XCTestCase {
         let table = try measureTable()
         let session = PostgresSession(bookmark: try liveBookmark())
         try await session.connect()
-        defer { Task { await session.close() } }
+        addTeardownBlock { await session.close() }
 
         let details = try await columns(session, table: table)
         let qualified = SQLBuilder.qualifiedName(schema: "public", table: table)
@@ -138,11 +138,11 @@ final class MeasureTests: XCTestCase {
         let table = try measureTable()
         let session = PostgresSession(bookmark: try liveBookmark())
         try await session.connect()
-        defer { Task { await session.close() } }
+        addTeardownBlock { await session.close() }
 
         let details = try await columns(session, table: table)
         let keyRows = try await session.queryStrings(
-            CatalogQueries.primaryKey(schema: "public", table: table))
+            CatalogQueries.primaryKey(.postgres, schema: "public", table: table))
         let key = keyRows.compactMap(\.first)
 
         func show(_ title: String, _ sql: String) {
@@ -152,8 +152,8 @@ final class MeasureTests: XCTestCase {
             }
         }
 
-        show("1. the columns", CatalogQueries.columns(schema: "public", table: table))
-        show("2. the primary key", CatalogQueries.primaryKey(schema: "public", table: table))
+        show("1. the columns", CatalogQueries.columns(.postgres, schema: "public", table: table))
+        show("2. the primary key", CatalogQueries.primaryKey(.postgres, schema: "public", table: table))
 
         let tab = await MainActor.run { Self.tab(table: table, details: details, key: key) }
         let limit = Self.measureLimit + 1
@@ -212,11 +212,11 @@ final class MeasureTests: XCTestCase {
         let table = try measureTable()
         let session = PostgresSession(bookmark: try liveBookmark())
         try await session.connect()
-        defer { Task { await session.close() } }
+        addTeardownBlock { await session.close() }
 
         let details = try await columns(session, table: table)
         let keyRows = try await session.queryStrings(
-            CatalogQueries.primaryKey(schema: "public", table: table))
+            CatalogQueries.primaryKey(.postgres, schema: "public", table: table))
         let key = keyRows.compactMap(\.first)
         let tab = await MainActor.run { Self.tab(table: table, details: details, key: key) }
         let (large, expressions) = await MainActor.run {
@@ -258,11 +258,11 @@ final class MeasureTests: XCTestCase {
         let table = try measureTable()
         let session = PostgresSession(bookmark: try liveBookmark())
         try await session.connect()
-        defer { Task { await session.close() } }
+        addTeardownBlock { await session.close() }
 
         let details = try await columns(session, table: table)
         let keyRows = try await session.queryStrings(
-            CatalogQueries.primaryKey(schema: "public", table: table))
+            CatalogQueries.primaryKey(.postgres, schema: "public", table: table))
         let key = keyRows.compactMap(\.first)
         try XCTSkipIf(key.isEmpty, "\(table) has no primary key")
 
@@ -325,12 +325,12 @@ final class MeasureTests: XCTestCase {
         let table = try measureTable()
         let session = PostgresSession(bookmark: try liveBookmark())
         try await session.connect()
-        defer { Task { await session.close() } }
+        addTeardownBlock { await session.close() }
 
         let details = try await columns(session, table: table)
         let large = try XCTUnwrap(details.first(where: \.isLarge))
         let keyRows = try await session.queryStrings(
-            CatalogQueries.primaryKey(schema: "public", table: table))
+            CatalogQueries.primaryKey(.postgres, schema: "public", table: table))
         let keyColumn = try XCTUnwrap(keyRows.first?.first)
 
         let qualified = SQLBuilder.qualifiedName(schema: "public", table: table)

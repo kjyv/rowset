@@ -1,5 +1,19 @@
 import Foundation
 
+/// The kind of database a bookmark opens.
+enum Driver: String, Codable, CaseIterable, Sendable {
+    case postgres
+    /// One file on this machine. It needs no server, no user and no encryption.
+    case sqlite
+
+    var label: String {
+        switch self {
+        case .postgres: "Postgres"
+        case .sqlite: "SQLite"
+        }
+    }
+}
+
 /// How the app proves who it is to the server.
 enum AuthMethod: String, Codable, CaseIterable, Sendable {
     /// The AWS CLI creates a short-lived token at every connect.
@@ -40,6 +54,9 @@ enum SSLMode: String, Codable, CaseIterable, Sendable {
 struct Bookmark: Codable, Identifiable, Hashable, Sendable {
     var id: UUID = UUID()
     var name: String = ""
+    var driver: Driver = .postgres
+    /// The database file, for SQLite. Every other field below belongs to a server.
+    var filePath: String = ""
     var host: String = ""
     var port: Int = 5432
     var database: String = ""
@@ -59,6 +76,8 @@ struct Bookmark: Codable, Identifiable, Hashable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        driver = try container.decodeIfPresent(Driver.self, forKey: .driver) ?? .postgres
+        filePath = try container.decodeIfPresent(String.self, forKey: .filePath) ?? ""
         host = try container.decodeIfPresent(String.self, forKey: .host) ?? ""
         port = try container.decodeIfPresent(Int.self, forKey: .port) ?? 5432
         database = try container.decodeIfPresent(String.self, forKey: .database) ?? ""
@@ -73,8 +92,14 @@ struct Bookmark: Codable, Identifiable, Hashable, Sendable {
     var displayName: String {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         if !trimmed.isEmpty { return trimmed }
+        if driver == .sqlite { return fileName.isEmpty ? "New connection" : fileName }
         if !database.isEmpty { return "\(database)@\(shortHost)" }
         return "New connection"
+    }
+
+    /// The last part of the path of a SQLite file.
+    var fileName: String {
+        URL(fileURLWithPath: filePath).lastPathComponent
     }
 
     /// The first label of the host name. RDS endpoints are too long for a sidebar row.
@@ -83,13 +108,18 @@ struct Bookmark: Codable, Identifiable, Hashable, Sendable {
     }
 
     var subtitle: String {
-        "\(username)@\(shortHost)/\(database)"
+        guard driver == .postgres else {
+            return URL(fileURLWithPath: filePath).deletingLastPathComponent().path
+        }
+        return "\(username)@\(shortHost)/\(database)"
     }
 
     /// True when every field that a connect needs has a value.
     ///
-    /// A password connection needs no AWS profile and no region.
+    /// A SQLite bookmark needs a file and nothing else. A password connection needs no AWS
+    /// profile and no region.
     var isComplete: Bool {
+        guard driver == .postgres else { return !filePath.isEmpty }
         let server = !host.isEmpty && !database.isEmpty && !username.isEmpty && port > 0
         switch authMethod {
         case .awsIAM: return server && !awsProfile.isEmpty && !awsRegion.isEmpty

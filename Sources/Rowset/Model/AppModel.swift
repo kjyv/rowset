@@ -139,6 +139,7 @@ final class AppModel {
                     rowLimit: tabState.rowLimit)
                 adoptBuffer(tab, connection: connection, preferred: tabState.bufferID)
             }
+            tab.measuresValueSize = connection.measuresValueSize
             // A file written before the pane belonged to the tab says nothing about it.
             if let shows = tabState.showsValuePane { tab.showsValuePane = shows }
             tabs.append(tab)
@@ -259,6 +260,7 @@ final class AppModel {
             connectionName: connection.bookmark.displayName,
             kind: kind,
             rowLimit: defaultRowLimit)
+        tab.measuresValueSize = connection.measuresValueSize
         tabs.append(tab)
         selectedTabID = tab.id
         saveSession()
@@ -272,6 +274,7 @@ final class AppModel {
             connectionName: connection.bookmark.displayName,
             kind: .sql,
             rowLimit: defaultRowLimit)
+        tab.measuresValueSize = connection.measuresValueSize
         adoptBuffer(tab, connection: connection)
         tabs.append(tab)
         selectedTabID = tab.id

@@ -21,9 +21,9 @@ final class TableFilterTests: XCTestCase {
 
     func testTheCatalogQueryLeavesOutTheSystemSchemas() {
         // The SQL holds one backslash, so LIKE reads the underscore as itself.
-        XCTAssertTrue(CatalogQueries.allTables.contains("NOT LIKE 'pg\\_%'"))
-        XCTAssertTrue(CatalogQueries.allTables.contains("table_schema <> 'information_schema'"))
-        XCTAssertTrue(CatalogQueries.allTables.contains("ORDER BY table_schema, table_name"))
+        XCTAssertTrue(CatalogQueries.allTables(.postgres).contains("NOT LIKE 'pg\\_%'"))
+        XCTAssertTrue(CatalogQueries.allTables(.postgres).contains("table_schema <> 'information_schema'"))
+        XCTAssertTrue(CatalogQueries.allTables(.postgres).contains("ORDER BY table_schema, table_name"))
     }
 
     func testATableRefNamesItsSchemaAndTable() {

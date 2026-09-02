@@ -63,7 +63,7 @@ final class UpdateStatementTests: XCTestCase {
     }
 
     func testThePrimaryKeyQueryAsksForOneTable() {
-        let sql = CatalogQueries.primaryKey(schema: "public", table: "component")
+        let sql = CatalogQueries.primaryKey(.postgres, schema: "public", table: "component")
         XCTAssertTrue(sql.contains("'\"public\".\"component\"'::regclass"))
         XCTAssertTrue(sql.contains("i.indisprimary"))
         XCTAssertTrue(sql.contains("array_position"), "the key keeps its column order")

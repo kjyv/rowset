@@ -149,12 +149,18 @@ final class QueryTab: Identifiable {
             .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
+    /// True when the server can name the size of a value without reading it.
+    ///
+    /// Only Postgres can. A SQLite file is on this machine, so nothing in it is worth leaving
+    /// behind, and it has no `pg_column_size` to ask with either.
+    var measuresValueSize = true
+
     /// True when the query may leave a large value on the server.
     ///
     /// It needs a key. Without one there is no way to ask for the rest of a row, so the whole
     /// value has to come with the grid.
     var cutsLargeValues: Bool {
-        !primaryKey.isEmpty && knownColumns.contains { cuts($0.name) }
+        measuresValueSize && !primaryKey.isEmpty && knownColumns.contains { cuts($0.name) }
     }
 
     /// True when the grid asks for the size of this column and not for its value.

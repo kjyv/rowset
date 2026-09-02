@@ -35,8 +35,78 @@ struct BookmarkEditor: View {
             Form {
                 Section {
                     TextField("Name", text: $draft.name, prompt: Text("concrete testing"))
+                    Picker("Kind", selection: $draft.driver) {
+                        ForEach(Driver.allCases, id: \.self) { driver in
+                            Text(driver.label).tag(driver)
+                        }
+                    }
                 }
 
+                if draft.driver == .sqlite {
+                    sqliteSection
+                } else {
+                    postgresSections
+                }
+            }
+            .formStyle(.grouped)
+
+            testResult
+
+            Divider()
+
+            buttons
+                .padding(16)
+        }
+        .frame(width: 560, height: draft.driver == .sqlite ? 400 : 660)
+        .task {
+            if !didLoadPassword {
+                didLoadPassword = true
+                password = KeychainStore.password(for: draft.id) ?? ""
+            }
+            profiles = AWSProfiles.load()
+            if draft.awsProfile.isEmpty, let first = profiles.first {
+                draft.awsProfile = first.name
+                if let region = first.region { draft.awsRegion = region }
+            }
+        }
+        .onChange(of: draft.awsProfile) { _, newValue in
+            if let profile = profiles.first(where: { $0.name == newValue }),
+               let region = profile.region {
+                draft.awsRegion = region
+            }
+        }
+    }
+
+    /// A SQLite database is one file, so it needs no server and no sign-in.
+    @ViewBuilder
+    private var sqliteSection: some View {
+        Section("Database file") {
+            HStack {
+                TextField("File", text: $draft.filePath, prompt: Text("~/data/app.sqlite"))
+                Button("Choose…") { chooseFile() }
+            }
+        }
+        Section {
+            Text("A SQLite database is one file on this machine. Rowset opens it for reading and "
+                + "writing, and waits up to three seconds when another program holds it.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func chooseFile() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Pick a SQLite database file"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        draft.filePath = url.path
+        if draft.name.isEmpty { draft.name = url.deletingPathExtension().lastPathComponent }
+    }
+
+    @ViewBuilder
+    private var postgresSections: some View {
                 Section("Server") {
                     TextField("Host", text: $draft.host, prompt: Text(hostPrompt))
                     TextField("Port", value: $draft.port, format: .number.grouping(.never))
@@ -84,14 +154,10 @@ struct BookmarkEditor: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-            }
-            .formStyle(.grouped)
+    }
 
-            testResult
-
-            Divider()
-
-            HStack {
+    private var buttons: some View {
+        HStack {
                 Button("Test Connection") { runTest() }
                     .disabled(!draft.isComplete || testState == .running)
                 if testState == .running {
@@ -112,26 +178,6 @@ struct BookmarkEditor: View {
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(!draft.isComplete)
-            }
-            .padding(16)
-        }
-        .frame(width: 560, height: 660)
-        .task {
-            if !didLoadPassword {
-                didLoadPassword = true
-                password = KeychainStore.password(for: draft.id) ?? ""
-            }
-            profiles = AWSProfiles.load()
-            if draft.awsProfile.isEmpty, let first = profiles.first {
-                draft.awsProfile = first.name
-                if let region = first.region { draft.awsRegion = region }
-            }
-        }
-        .onChange(of: draft.awsProfile) { _, newValue in
-            if let profile = profiles.first(where: { $0.name == newValue }),
-               let region = profile.region {
-                draft.awsRegion = region
-            }
         }
     }
 
@@ -179,6 +225,8 @@ struct BookmarkEditor: View {
 
     private func normalized() -> Bookmark {
         var copy = draft
+        copy.filePath = (copy.filePath as NSString).expandingTildeInPath
+            .trimmingCharacters(in: .whitespaces)
         copy.host = copy.host.trimmingCharacters(in: .whitespaces)
         copy.database = copy.database.trimmingCharacters(in: .whitespaces)
         copy.username = copy.username.trimmingCharacters(in: .whitespaces)
@@ -193,11 +241,14 @@ struct BookmarkEditor: View {
             KeychainStore.setPassword(password, for: bookmark.id)
         }
         testState = .running
+        let statement = bookmark.driver == .sqlite
+            ? "SELECT 'SQLite ' || sqlite_version()"
+            : "SELECT version()"
         Task {
-            let session = PostgresSession(bookmark: bookmark)
+            let session = DatabaseSessionFactory.session(for: bookmark)
             do {
                 try await session.connect()
-                let result = try await session.query("SELECT version()", maxRows: 1)
+                let result = try await session.query(statement, maxRows: 1)
                 await session.close()
                 let version = result.rows.first?.values.first?.text ?? "connected"
                 testState = .passed(String(version.prefix(80)))

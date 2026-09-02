@@ -32,7 +32,7 @@ enum SessionError: LocalizedError {
 /// one fixed password, but an IAM auth token lasts only 15 minutes, so any connection that a pool
 /// opened later would use an expired token. One connection lets the app fetch a new token every
 /// time it reconnects.
-actor PostgresSession {
+actor PostgresSession: DatabaseSession {
     let bookmark: Bookmark
 
     private var connection: PostgresConnection?
@@ -220,12 +220,6 @@ actor PostgresSession {
         }
 
         _ = try await connection.query(PostgresQuery(unsafeSQL: "COMMIT"), logger: logger)
-    }
-
-    /// Runs a statement and returns the rows as plain strings. The catalog queries use this.
-    func queryStrings(_ sql: String, maxRows: Int = 10_000) async throws -> [[String]] {
-        let result = try await query(sql, maxRows: maxRows)
-        return result.rows.map { row in row.values.map { $0.isNull ? "" : $0.text } }
     }
 }
 

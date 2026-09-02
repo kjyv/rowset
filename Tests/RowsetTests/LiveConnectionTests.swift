@@ -46,22 +46,22 @@ final class LiveConnectionTests: XCTestCase {
         let bookmark = try liveBookmark()
         let session = PostgresSession(bookmark: bookmark)
         try await session.connect()
-        defer { Task { await session.close() } }
+        addTeardownBlock { await session.close() }
 
         let version = try await session.query("SELECT version()", maxRows: 1)
         XCTAssertEqual(version.rows.count, 1)
         let text = version.rows[0].values[0].text
         XCTAssertTrue(text.contains("PostgreSQL"), "unexpected version string: \(text)")
 
-        let schemas = try await session.queryStrings(CatalogQueries.schemas)
+        let schemas = try await session.queryStrings(CatalogQueries.schemas(.postgres))
         XCTAssertFalse(schemas.isEmpty, "the database reports no schema")
 
-        let tables = try await session.queryStrings(CatalogQueries.tables(schema: schema))
+        let tables = try await session.queryStrings(CatalogQueries.tables(.postgres, schema: schema))
         XCTAssertFalse(tables.isEmpty, "schema \(schema) reports no table")
 
         guard let firstTable = tables.first?.first else { return }
         let columns = try await session.queryStrings(
-            CatalogQueries.columns(schema: schema, table: firstTable))
+            CatalogQueries.columns(.postgres, schema: schema, table: firstTable))
         XCTAssertFalse(columns.isEmpty, "table \(firstTable) reports no column")
     }
 
@@ -69,14 +69,14 @@ final class LiveConnectionTests: XCTestCase {
         let bookmark = try liveBookmark()
         let session = PostgresSession(bookmark: bookmark)
         try await session.connect()
-        defer { Task { await session.close() } }
+        addTeardownBlock { await session.close() }
 
-        let tables = try await session.queryStrings(CatalogQueries.tables(schema: schema))
+        let tables = try await session.queryStrings(CatalogQueries.tables(.postgres, schema: schema))
         guard let table = tables.first?.first else {
             throw XCTSkip("schema \(schema) has no table")
         }
         let columns = try await session.queryStrings(
-            CatalogQueries.columns(schema: schema, table: table))
+            CatalogQueries.columns(.postgres, schema: schema, table: table))
         guard let sortColumn = columns.first?.first else {
             throw XCTSkip("table \(table) has no column")
         }
@@ -101,9 +101,9 @@ final class LiveConnectionTests: XCTestCase {
         let bookmark = try liveBookmark()
         let session = PostgresSession(bookmark: bookmark)
         try await session.connect()
-        defer { Task { await session.close() } }
+        addTeardownBlock { await session.close() }
 
-        let tables = try await session.queryStrings(CatalogQueries.tables(schema: schema))
+        let tables = try await session.queryStrings(CatalogQueries.tables(.postgres, schema: schema))
         guard let table = tables.first?.first else { throw XCTSkip("no table") }
 
         func rowCount(filter: String) async throws -> Int {
@@ -124,7 +124,7 @@ final class LiveConnectionTests: XCTestCase {
         let bookmark = try liveBookmark()
         let session = PostgresSession(bookmark: bookmark)
         try await session.connect()
-        defer { Task { await session.close() } }
+        addTeardownBlock { await session.close() }
 
         let equals = try await session.query(
             "SELECT * FROM (VALUES (1), (NULL)) AS t(v) WHERE v = NULL", maxRows: 10)
@@ -140,7 +140,7 @@ final class LiveConnectionTests: XCTestCase {
     func testTwoConnectsAtOnceOpenOneConnection() async throws {
         let bookmark = try liveBookmark()
         let session = PostgresSession(bookmark: bookmark)
-        defer { Task { await session.close() } }
+        addTeardownBlock { await session.close() }
 
         async let first: Void = session.connect()
         async let second: Void = session.connect()
@@ -231,7 +231,7 @@ final class LiveConnectionTests: XCTestCase {
         }
 
         let key = try await session.queryStrings(
-            CatalogQueries.primaryKey(schema: "public", table: table))
+            CatalogQueries.primaryKey(.postgres, schema: "public", table: table))
         XCTAssertEqual(key.map { $0[0] }, ["a", "b"], "both columns, in key order")
     }
 
@@ -290,7 +290,7 @@ final class LiveConnectionTests: XCTestCase {
         let bookmark = try liveBookmark()
         let session = PostgresSession(bookmark: bookmark)
         try await session.connect()
-        defer { Task { await session.close() } }
+        addTeardownBlock { await session.close() }
 
         let statement = "SELECT generate_series(1, 12) AS n ORDER BY n"
 
@@ -316,7 +316,7 @@ final class LiveConnectionTests: XCTestCase {
         let bookmark = try liveBookmark()
         let session = PostgresSession(bookmark: bookmark)
         try await session.connect()
-        defer { Task { await session.close() } }
+        addTeardownBlock { await session.close() }
 
         let cte = "WITH x AS (SELECT 1 AS a UNION SELECT 2) SELECT * FROM x ORDER BY a"
         let fromCTE = try await session.queryStrings(
@@ -334,7 +334,7 @@ final class LiveConnectionTests: XCTestCase {
         let bookmark = try liveBookmark()
         let session = PostgresSession(bookmark: bookmark)
         try await session.connect()
-        defer { Task { await session.close() } }
+        addTeardownBlock { await session.close() }
 
         let result = try await session.query(
             """
@@ -370,7 +370,7 @@ final class LiveConnectionTests: XCTestCase {
         let bookmark = try liveBookmark()
         let session = PostgresSession(bookmark: bookmark)
         try await session.connect()
-        defer { Task { await session.close() } }
+        addTeardownBlock { await session.close() }
 
         let statement = "SELECT generate_series(1, 10) AS n"
 
@@ -391,7 +391,7 @@ final class LiveConnectionTests: XCTestCase {
         let bookmark = try liveBookmark()
         let session = PostgresSession(bookmark: bookmark)
         try await session.connect()
-        defer { Task { await session.close() } }
+        addTeardownBlock { await session.close() }
 
         do {
             _ = try await session.query("SELECT * FROM this_table_does_not_exist", maxRows: 1)
@@ -411,7 +411,7 @@ final class LiveConnectionTests: XCTestCase {
         let bookmark = try liveBookmark()
         let session = PostgresSession(bookmark: bookmark)
         try await session.connect()
-        defer { Task { await session.close() } }
+        addTeardownBlock { await session.close() }
 
         // The statement offers 1000 rows. The session must read 10 and cancel the rest.
         let result = try await session.query("SELECT generate_series(1, 1000)", maxRows: 10)

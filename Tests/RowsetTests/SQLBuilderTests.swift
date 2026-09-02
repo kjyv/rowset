@@ -50,7 +50,7 @@ final class SQLBuilderTests: XCTestCase {
     }
 
     func testCatalogQueriesEscapeTheSchemaName() {
-        let sql = CatalogQueries.tables(schema: "it's")
+        let sql = CatalogQueries.tables(.postgres, schema: "it's")
         XCTAssertTrue(sql.contains("'it''s'"))
     }
 

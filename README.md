@@ -1,15 +1,15 @@
 # Rowset
 
-A macOS database browser for Postgres, with AWS IAM sign-in.
+A macOS database browser for Postgres and SQLite, with AWS IAM sign-in.
 
 Pick a saved connection, read a table, filter and sort it, change a value, and run SQL. Rowset
-signs in to an RDS instance with an IAM token that it fetches at every connect, or to any other
-server with a user and a password.
+signs in to an RDS instance with an IAM token that it fetches at every connect, to any other
+Postgres server with a user and a password, or to a SQLite file on this machine.
 
 ## What it does
 
 - Saves connections as bookmarks. The bookmark file holds no secret.
-- Signs in with AWS IAM or with a user and a password.
+- Signs in with AWS IAM or with a user and a password, and opens a SQLite file with neither.
 - Shows schemas, tables, views, and columns in a tree on the left.
 - Opens a table in a tab, with a `WHERE` field, sortable columns, and pages.
 - Shows the whole value of a cell in a pane under the grid. It formats JSON and colours it.
@@ -17,7 +17,7 @@ server with a user and a password.
 - Changes a value and sends the edits together, after it shows you the SQL.
 - Runs SQL in a console, one statement at a time or all of them.
 
-Rowset speaks Postgres. The driver sits behind a protocol, so another one can join it.
+Both drivers sit behind one protocol, so every part above them reads rows the same way.
 
 ## Install
 
@@ -34,10 +34,11 @@ The app is not signed. On the first launch, right click it and pick **Open**, th
 ## Add a connection
 
 1. Press the `+` button under the sidebar.
-2. Fill in the host, the port, the database, and the database user.
-3. Pick the sign-in method, and the AWS profile for IAM. Rowset reads the profile names from
-   `~/.aws/config`.
-4. Press **Test Connection**, then **Save**.
+2. Pick the kind: **Postgres** or **SQLite**.
+3. For SQLite, press **Choose…** and pick the database file. That is all it needs.
+4. For Postgres, fill in the host, the port, the database, and the database user, then pick the
+   sign-in method. Rowset reads the AWS profile names from `~/.aws/config`.
+5. Press **Test Connection**, then **Save**.
 
 The database user is the IAM database user, for example `cube_testing_iam_owner`. It is not your
 AWS user name.
@@ -55,6 +56,11 @@ bookmark, and it leaves when you delete the bookmark. Pick this for a server tha
 RDS IAM needs an encrypted connection. Each bookmark picks **verify-full**, which checks the
 server against the bundled AWS RDS root store, **require**, which encrypts without checking the
 server, or **disable**.
+
+**SQLite** signs in to nothing. Rowset opens the file for reading and writing through the SQLite
+that macOS ships, and waits up to three seconds when another program holds it. The tree shows one
+schema, `main`, and every value comes back whole: a file on this machine is never worth leaving
+behind.
 
 ## Table view
 

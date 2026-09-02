@@ -1,0 +1,216 @@
+import SQLite3
+import XCTest
+@testable import Rowset
+
+/// The SQLite driver, end to end.
+///
+/// A SQLite database is a file, so these tests need no server and run with the rest. They write a
+/// small database, open it the way the app opens one, and read it back through the app.
+final class SQLiteTests: XCTestCase {
+
+    private var directory: URL!
+    private var file: URL!
+
+    override func setUpWithError() throws {
+        directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("rowset-sqlite-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        file = directory.appendingPathComponent("test.sqlite")
+        try write("""
+            CREATE TABLE note (
+              id INTEGER PRIMARY KEY,
+              slug TEXT NOT NULL,
+              body TEXT,
+              size REAL,
+              payload BLOB
+            );
+            CREATE VIEW note_slug AS SELECT slug FROM note;
+            INSERT INTO note (id, slug, body, size, payload) VALUES
+              (1, 'first', '{"a": 1}', 1.5, x'00ff'),
+              (2, 'second', NULL, NULL, NULL);
+            """)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// Writes the database with the C library, so the test does not lean on the code it tests.
+    private func write(_ sql: String) throws {
+        var handle: OpaquePointer?
+        XCTAssertEqual(
+            sqlite3_open_v2(
+                file.path, &handle, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil),
+            SQLITE_OK)
+        defer { sqlite3_close_v2(handle) }
+        XCTAssertEqual(sqlite3_exec(handle, sql, nil, nil, nil), SQLITE_OK)
+    }
+
+    private func bookmark() -> Bookmark {
+        var bookmark = Bookmark()
+        bookmark.name = "notes"
+        bookmark.driver = .sqlite
+        bookmark.filePath = file.path
+        return bookmark
+    }
+
+    // MARK: - The session
+
+    func testAFileOpensAndReadsItsRows() async throws {
+        let session = SQLiteSession(bookmark: bookmark())
+        try await session.connect()
+        addTeardownBlock { await session.close() }
+
+        let result = try await session.query("SELECT id, slug FROM note ORDER BY id", maxRows: 10)
+        XCTAssertEqual(result.columns.map(\.name), ["id", "slug"])
+        XCTAssertEqual(result.rows.count, 2)
+        XCTAssertEqual(result.rows[0].value(at: 0).text, "1")
+        XCTAssertEqual(result.rows[0].value(at: 1).text, "first")
+    }
+
+    func testEveryValueTypeReadsAsText() async throws {
+        let session = SQLiteSession(bookmark: bookmark())
+        try await session.connect()
+        addTeardownBlock { await session.close() }
+
+        let result = try await session.query(
+            "SELECT body, size, payload FROM note WHERE id = 1", maxRows: 1)
+        let row = try XCTUnwrap(result.rows.first)
+        XCTAssertEqual(row.value(at: 0).text, #"{"a": 1}"#)
+        XCTAssertEqual(row.value(at: 1).text, "1.5")
+        XCTAssertEqual(row.value(at: 2).text, "\\x00ff")
+        XCTAssertTrue(row.value(at: 2).isRaw)
+    }
+
+    func testANullIsANull() async throws {
+        let session = SQLiteSession(bookmark: bookmark())
+        try await session.connect()
+        addTeardownBlock { await session.close() }
+
+        let result = try await session.query("SELECT body FROM note WHERE id = 2", maxRows: 1)
+        XCTAssertTrue(try XCTUnwrap(result.rows.first).value(at: 0).isNull)
+    }
+
+    func testAStatementThatGivesNoRowStillNamesItsColumns() async throws {
+        let session = SQLiteSession(bookmark: bookmark())
+        try await session.connect()
+        addTeardownBlock { await session.close() }
+
+        let result = try await session.query("SELECT id, slug FROM note WHERE id = 99", maxRows: 5)
+        XCTAssertTrue(result.rows.isEmpty)
+        XCTAssertEqual(result.columns.map(\.name), ["id", "slug"])
+    }
+
+    func testAMissingFileIsAnError() async throws {
+        var missing = bookmark()
+        missing.filePath = directory.appendingPathComponent("nothing.sqlite").path
+        let session = SQLiteSession(bookmark: missing)
+        do {
+            try await session.connect()
+            XCTFail("a missing file must not open")
+        } catch {
+            XCTAssertTrue(error is SQLiteError)
+        }
+    }
+
+    /// A batch that hits the wrong number of rows must change nothing at all.
+    func testATransactionRollsBackWhenAStatementMissesItsRow() async throws {
+        let session = SQLiteSession(bookmark: bookmark())
+        try await session.connect()
+        addTeardownBlock { await session.close() }
+
+        do {
+            try await session.runTransaction([
+                "UPDATE note SET slug = 'changed' WHERE id = 1 RETURNING 1",
+                "UPDATE note SET slug = 'never' WHERE id = 99 RETURNING 1",
+            ])
+            XCTFail("the second statement matched no row")
+        } catch {
+            // The first statement is rolled back with the second.
+        }
+
+        let after = try await session.query("SELECT slug FROM note WHERE id = 1", maxRows: 1)
+        XCTAssertEqual(try XCTUnwrap(after.rows.first).value(at: 0).text, "first")
+    }
+
+    func testATransactionCommitsWhenEveryStatementHitsOneRow() async throws {
+        let session = SQLiteSession(bookmark: bookmark())
+        try await session.connect()
+        addTeardownBlock { await session.close() }
+
+        try await session.runTransaction([
+            "UPDATE note SET slug = 'changed' WHERE id = 1 RETURNING 1"
+        ])
+        let after = try await session.query("SELECT slug FROM note WHERE id = 1", maxRows: 1)
+        XCTAssertEqual(try XCTUnwrap(after.rows.first).value(at: 0).text, "changed")
+    }
+
+    // MARK: - The catalog
+
+    @MainActor
+    func testTheTreeShowsTheTablesAndTheirColumns() async throws {
+        let connection = ConnectionModel(bookmark: bookmark())
+        await connection.connect()
+        XCTAssertTrue(connection.state.isConnected, "\(connection.state)")
+        addTeardownBlock { @MainActor in await connection.disconnect() }
+
+        XCTAssertEqual(connection.schemas.map { $0.kind.title }, ["main"])
+
+        let schema = try XCTUnwrap(connection.schemas.first)
+        await connection.loadChildren(of: schema)
+        let children: [TreeNode] = schema.children ?? []
+        XCTAssertEqual(children.map { $0.kind.title }, ["note", "note_slug"])
+
+        let details = await connection.columnDetails(schema: "main", table: "note")
+        XCTAssertEqual(details.map(\.name), ["id", "slug", "body", "size", "payload"])
+        XCTAssertEqual(details.first?.typeName, "INTEGER")
+        XCTAssertEqual(details.first(where: { $0.name == "slug" })?.isNullable, false)
+        XCTAssertEqual(details.first(where: { $0.name == "body" })?.isNullable, true)
+    }
+
+    // MARK: - The app
+
+    @MainActor
+    func testATableTabReadsItsRows() async throws {
+        let model = AppModel(
+            store: BookmarkStore(fileURL: directory.appendingPathComponent("bookmarks.json")),
+            sessionStore: SessionStore(fileURL: directory.appendingPathComponent("session.json")),
+            bufferStore: BufferStore(fileURL: directory.appendingPathComponent("consoles.json")))
+        let connection = ConnectionModel(bookmark: bookmark())
+        model.connections[connection.id] = connection
+        await connection.connect()
+        addTeardownBlock { @MainActor in await connection.disconnect() }
+
+        let tab = model.openTable(schema: "main", name: "note", connection: connection)
+        await model.runTableQuery(tab)
+
+        let result = try XCTUnwrap(tab.result)
+        XCTAssertEqual(result.rows.count, 2)
+        XCTAssertEqual(tab.primaryKey, ["id"])
+
+        // Nothing is left on the server. A file on this machine is read whole.
+        XCTAssertFalse(tab.cutsLargeValues)
+        XCTAssertFalse(result.rows.contains { $0.values.contains { $0.isPlaceholder } })
+    }
+
+    @MainActor
+    func testAFilterAndASortReachTheFile() async throws {
+        let model = AppModel(
+            store: BookmarkStore(fileURL: directory.appendingPathComponent("bookmarks.json")),
+            sessionStore: SessionStore(fileURL: directory.appendingPathComponent("session.json")),
+            bufferStore: BufferStore(fileURL: directory.appendingPathComponent("consoles.json")))
+        let connection = ConnectionModel(bookmark: bookmark())
+        model.connections[connection.id] = connection
+        await connection.connect()
+        addTeardownBlock { @MainActor in await connection.disconnect() }
+
+        let tab = model.openTable(schema: "main", name: "note", connection: connection)
+        tab.filterText = "id = 2"
+        tab.orderByText = "slug DESC"
+        await model.runTableQuery(tab)
+
+        let result = try XCTUnwrap(tab.result)
+        XCTAssertEqual(result.rows.count, 1)
+        XCTAssertEqual(result.rows[0].value(at: 1).text, "second")
+    }
+}

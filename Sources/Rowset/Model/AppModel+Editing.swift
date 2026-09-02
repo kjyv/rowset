@@ -10,7 +10,8 @@ extension AppModel {
         else { return }
 
         guard let rows = try? await connection.run(
-            CatalogQueries.primaryKey(schema: schema, table: name), limit: 32)
+            CatalogQueries.primaryKey(connection.driver, schema: schema, table: name),
+            limit: 32)
         else { return }
 
         tab.primaryKey = rows.rows.compactMap { row in
