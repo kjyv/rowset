@@ -100,6 +100,81 @@ final class CellRendererTests: XCTestCase {
         XCTAssertEqual(CellRenderer.render(cell(bytes, .bytea)).text, "\\x00ff10")
     }
 
+    // MARK: - Network addresses
+
+    private func inetBytes(family: UInt8, bits: UInt8, isCIDR: UInt8, _ address: [UInt8])
+        -> ByteBuffer
+    {
+        buffer { value in
+            value.writeInteger(family)
+            value.writeInteger(bits)
+            value.writeInteger(isCIDR)
+            value.writeInteger(UInt8(address.count))
+            value.writeBytes(address)
+        }
+    }
+
+    /// What `pg_stat_activity.client_addr` sends.
+    func testInetIPv4HidesAFullNetmask() {
+        let bytes = inetBytes(family: 2, bits: 32, isCIDR: 0, [10, 0, 19, 244])
+        let value = CellRenderer.render(cell(bytes, .inet))
+        XCTAssertEqual(value.text, "10.0.19.244")
+        XCTAssertFalse(value.isRaw)
+    }
+
+    func testInetIPv4ShowsAShorterNetmask() {
+        let bytes = inetBytes(family: 2, bits: 24, isCIDR: 0, [192, 168, 1, 5])
+        XCTAssertEqual(CellRenderer.render(cell(bytes, .inet)).text, "192.168.1.5/24")
+    }
+
+    func testCIDRAlwaysShowsItsNetmask() {
+        let bytes = inetBytes(family: 2, bits: 32, isCIDR: 1, [10, 0, 19, 244])
+        XCTAssertEqual(CellRenderer.render(cell(bytes, .cidr)).text, "10.0.19.244/32")
+    }
+
+    func testInetIPv6() {
+        let address: [UInt8] = [
+            0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01,
+        ]
+        let bytes = inetBytes(family: 3, bits: 128, isCIDR: 0, address)
+        XCTAssertEqual(CellRenderer.render(cell(bytes, .inet)).text, "2001:db8::1")
+    }
+
+    func testInetIPv6Loopback() {
+        var address = [UInt8](repeating: 0, count: 16)
+        address[15] = 1
+        let bytes = inetBytes(family: 3, bits: 128, isCIDR: 0, address)
+        XCTAssertEqual(CellRenderer.render(cell(bytes, .inet)).text, "::1")
+    }
+
+    func testInetIPv6EmbedsAnIPv4Address() {
+        let address: [UInt8] = [
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 10, 0, 19, 244,
+        ]
+        let bytes = inetBytes(family: 3, bits: 128, isCIDR: 0, address)
+        XCTAssertEqual(CellRenderer.render(cell(bytes, .inet)).text, "::ffff:10.0.19.244")
+    }
+
+    func testAnInetArray() {
+        let element = inetBytes(family: 2, bits: 32, isCIDR: 0, [10, 0, 19, 244])
+        let bytes = buffer { value in
+            value.writeInteger(Int32(1))
+            value.writeInteger(Int32(0))
+            value.writeInteger(UInt32(PostgresDataType.inet.rawValue))
+            value.writeInteger(Int32(1))
+            value.writeInteger(Int32(1))
+            value.writeInteger(Int32(element.readableBytes))
+            value.writeImmutableBuffer(element)
+        }
+        XCTAssertEqual(CellRenderer.render(cell(bytes, .inetArray)).text, "{10.0.19.244}")
+    }
+
+    /// A length the family does not match is left to the hex dump.
+    func testAMalformedInetFallsBackToAHexDump() {
+        let bytes = inetBytes(family: 2, bits: 32, isCIDR: 0, [10, 0])
+        XCTAssertTrue(CellRenderer.render(cell(bytes, .inet)).isRaw)
+    }
+
     func testTextArray() {
         // The binary array layout: dimensions, has-null flag, element type, length, lower bound,
         // then each element with its byte count.

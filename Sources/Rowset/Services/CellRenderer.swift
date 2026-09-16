@@ -95,7 +95,10 @@ enum CellRenderer {
         case .interval:
             return formatInterval(cell)
 
-        case .inet, .cidr, .macaddr, .macaddr8, .point, .line, .lseg, .box, .path, .polygon, .circle, .money:
+        case .inet, .cidr:
+            return formatNetworkAddress(cell)
+
+        case .macaddr, .macaddr8, .point, .line, .lseg, .box, .path, .polygon, .circle, .money:
             // These have a binary layout the app does not decode yet.
             return nil
 
@@ -169,6 +172,79 @@ enum CellRenderer {
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
         return "\"\(escaped)\""
+    }
+
+    // MARK: - Network addresses
+
+    /// `inet` and `cidr` are one byte of address family, one of netmask bits, one `is_cidr` flag,
+    /// one of address length, then the address.
+    ///
+    /// The family is Postgres' own number, 2 for IPv4 and 3 for IPv6, not the host's `AF_INET`.
+    private static func formatNetworkAddress(_ cell: PostgresCell) -> String? {
+        guard var buffer = cell.bytes,
+              let family = buffer.readInteger(as: UInt8.self),
+              let bits = buffer.readInteger(as: UInt8.self),
+              let isCIDR = buffer.readInteger(as: UInt8.self),
+              let length = buffer.readInteger(as: UInt8.self),
+              let address = buffer.readBytes(length: Int(length)),
+              buffer.readableBytes == 0
+        else { return nil }
+
+        let text: String
+        switch (family, length) {
+        case (2, 4): text = formatIPv4(address)
+        case (3, 16): text = formatIPv6(address)
+        default: return nil
+        }
+
+        // A `cidr` always carries its netmask, an `inet` only below the full width.
+        guard isCIDR != 0 || bits != length * 8 else { return text }
+        return "\(text)/\(bits)"
+    }
+
+    private static func formatIPv4(_ address: [UInt8]) -> String {
+        address.map(String.init).joined(separator: ".")
+    }
+
+    /// Lowercase groups, the longest run of two or more zero groups written as `::`, and the last
+    /// four bytes in IPv4 form for the addresses that embed one.
+    private static func formatIPv6(_ address: [UInt8]) -> String {
+        let groups = stride(from: 0, to: 16, by: 2).map {
+            UInt16(address[$0]) << 8 | UInt16(address[$0 + 1])
+        }
+
+        var best: (start: Int, length: Int)?
+        var run: (start: Int, length: Int)?
+        for (index, group) in groups.enumerated() {
+            guard group == 0 else {
+                run = nil
+                continue
+            }
+            let current = (start: run?.start ?? index, length: (run?.length ?? 0) + 1)
+            run = current
+            if current.length > (best?.length ?? 1) { best = current }
+        }
+
+        var text = ""
+        var index = 0
+        while index < groups.count {
+            if let best, best.start <= index, index < best.start + best.length {
+                if index == best.start { text += ":" }
+                index += 1
+                continue
+            }
+            if index != 0 { text += ":" }
+            if index == 6, let best, best.start == 0,
+               best.length == 6 || (best.length == 5 && groups[5] == 0xffff) {
+                text += formatIPv4(Array(address[12...]))
+                index = groups.count
+                break
+            }
+            text += String(groups[index], radix: 16)
+            index += 1
+        }
+        if let best, best.start + best.length == groups.count { text += ":" }
+        return text
     }
 
     // MARK: - Date and time
