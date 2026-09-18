@@ -1,4 +1,5 @@
 import AppKit
+
 import SwiftUI
 
 /// The result grid.
@@ -27,7 +28,9 @@ struct ResultTableView: NSViewRepresentable {
 
     static let rowHeight: CGFloat = 22
 
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeCoordinator() -> Coordinator {
+        return Coordinator(self)
+    }
 
     func makeNSView(context: Context) -> NSScrollView {
         let coordinator = context.coordinator
@@ -143,7 +146,7 @@ struct ResultTableView: NSViewRepresentable {
                 shownResultID = parent.result.id
                 shownRevision = parent.result.revision
                 shownSelection = parent.selection
-                tableView.reloadData()
+                redrawRows()
                 tableView.scrollRowToVisible(0)
                 syncSortDescriptors()
                 return
@@ -153,7 +156,7 @@ struct ResultTableView: NSViewRepresentable {
             // page and the scroll both stay put.
             if shownRevision != parent.result.revision {
                 shownRevision = parent.result.revision
-                tableView.reloadData()
+                redrawRows()
             }
 
             revealRequestedColumn()
@@ -166,6 +169,23 @@ struct ResultTableView: NSViewRepresentable {
             }
 
             syncSortDescriptors()
+        }
+
+        /// Draws the rows again with what the result holds now.
+        ///
+        /// A row view reads its cells while it draws, so a row that is marked shows the new
+        /// values. `reloadData` throws the rows away and asks for them again, and the grid
+        /// flashes once for each call. A sort costs two of those on a table that cuts a large
+        /// value: one for the rows, and one for the sizes that arrive after them.
+        ///
+        /// Only a different number of rows needs the whole table again.
+        private func redrawRows() {
+            guard let tableView else { return }
+            guard tableView.numberOfRows == parent.result.rows.count else {
+                tableView.reloadData()
+                return
+            }
+            tableView.enumerateAvailableRowViews { rowView, _ in rowView.needsDisplay = true }
         }
 
         /// Scrolls sideways to the column that the sidebar asked for.
