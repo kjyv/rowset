@@ -267,6 +267,16 @@ struct ResultTableView: NSViewRepresentable {
             return RowContent(values: values, selected: selected, edited: edited)
         }
 
+        /// Repaints every row while a column header handle moves.
+        ///
+        /// A row view draws all of its cells at the column rectangles it reads while it draws.
+        /// AppKit redraws a row when the row changes size, and the table keeps its size as long
+        /// as its columns are narrower than the scroll view, so nothing else asks the rows below
+        /// the handle to follow.
+        func tableViewColumnDidResize(_ notification: Notification) {
+            tableView?.enumerateAvailableRowViews { rowView, _ in rowView.needsDisplay = true }
+        }
+
         // MARK: Clicks
 
         func mouseDown(row: Int, column: Int, extend: Bool, clickCount: Int) {
