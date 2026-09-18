@@ -86,6 +86,8 @@ column.
 | Command-T | a new console |
 | Command-Return | run the statement the caret is in |
 | Shift-Command-Return | run every statement, one after the other |
+| Tab | in a console, indent the lines of the selection |
+| Shift-Tab | in a console, dedent the lines of the selection |
 | Command-W | close the tab |
 | Control-Tab | the next tab |
 | Control-Command-S | show or hide the sidebar |

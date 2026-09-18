@@ -56,6 +56,12 @@ struct SQLEditorView: NSViewRepresentable {
         static let currentStatement = NSColor.controlAccentColor.withAlphaComponent(0.12)
     }
 
+    /// Which way a key moves the lines of the selection.
+    enum Move {
+        case deeper
+        case shallower
+    }
+
     @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
         private let text: Binding<String>
@@ -74,6 +80,51 @@ struct SQLEditorView: NSViewRepresentable {
             text.wrappedValue = textView.string
             isTyping = false
             restyle()
+        }
+
+        /// Sends Tab and Shift-Tab to `LineIndenter`.
+        ///
+        /// Both keys always count as handled. Shift-Tab on a line with no indent would otherwise
+        /// move the keyboard to another view, which loses the place in the query.
+        func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            guard let move = Self.move(for: selector, event: NSApp.currentEvent) else {
+                return false
+            }
+            apply(move, in: textView)
+            return true
+        }
+
+        /// Which way a key moves the lines, or `nil` for a key that belongs to the text view.
+        ///
+        /// The key decides, not the selector alone. The standard key bindings turn Shift-Tab
+        /// into `insertBacktab:`, but the key also arrives as `insertTab:` with the Shift flag
+        /// on it. Both mean dedent, so the Shift flag of the key wins over the selector.
+        static func move(for selector: Selector, event: NSEvent?) -> Move? {
+            let isTab = selector == #selector(NSResponder.insertTab(_:))
+            let isBacktab = selector == #selector(NSResponder.insertBacktab(_:))
+            guard isTab || isBacktab else { return nil }
+
+            let shift = event?.type == .keyDown && event?.modifierFlags.contains(.shift) == true
+            return isBacktab || shift ? .shallower : .deeper
+        }
+
+        /// Moves the lines of the selection one step, and writes the edit into the view.
+        ///
+        /// The pair of `shouldChangeText` and `didChangeText` puts the edit on the undo stack and
+        /// tells the delegate, which then writes the text back to the tab and colours it again.
+        private func apply(_ move: Move, in textView: NSTextView) {
+            let selection = textView.selectedRange()
+            let edit = move == .deeper
+                ? LineIndenter.indent(textView.string, selection: selection)
+                : LineIndenter.dedent(textView.string, selection: selection)
+
+            guard let edit,
+                  textView.shouldChangeText(in: edit.range, replacementString: edit.replacement)
+            else { return }
+
+            textView.textStorage?.replaceCharacters(in: edit.range, with: edit.replacement)
+            textView.didChangeText()
+            textView.setSelectedRange(edit.selection)
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
