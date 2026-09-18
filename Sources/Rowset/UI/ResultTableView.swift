@@ -802,6 +802,9 @@ final class GridRowView: NSTableRowView {
     private static let placeholderAttributes: [NSAttributedString.Key: Any] =
         [.font: italicFont, .foregroundColor: NSColor.tertiaryLabelColor]
 
+    /// The band over a row that holds a selection. It has to stay under the text it covers.
+    private static let rowBandColor = NSColor.controlAccentColor.withAlphaComponent(0.10)
+
     private static let leftInset: CGFloat = 6
     private static let rightInset: CGFloat = 7
 
@@ -843,6 +846,14 @@ final class GridRowView: NSTableRowView {
         let ascent = Self.font.ascender
         let descent = -Self.font.descender
         let baseline = ((bounds.height - (ascent + descent)) / 2 + descent).rounded()
+
+        // A row that holds a selection keeps a band over its whole width. The selected cell can
+        // be far off the side once you scroll, and the band is what still names its row.
+        if content.selected != nil {
+            context.setFillColor(Self.rowBandColor.cgColor)
+            context.fill(CGRect(
+                x: dirtyRect.minX, y: 0, width: dirtyRect.width, height: bounds.height))
+        }
 
         for column in columns {
             guard content.values.indices.contains(column) else { continue }
