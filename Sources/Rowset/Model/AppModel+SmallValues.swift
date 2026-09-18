@@ -11,17 +11,24 @@ extension AppModel {
     ///
     /// The catalog cannot answer this. `pg_stats` reported an average of twenty bytes for a
     /// column whose values run to fifty kilobytes. Only the page itself knows.
-    func fillSmallValues(_ names: [String], in tab: QueryTab) async {
+    ///
+    /// The page carries these before it reaches the grid, so one sort paints the grid once. A
+    /// page shown first and filled after drew the sizes, then the values a moment later, and the
+    /// grid flickered on every sort.
+    ///
+    /// It gives back `nil` when it read nothing, and the caller keeps the page it has.
+    func filledSmallValues(
+        _ names: [String], in result: ResultSet, tab: QueryTab
+    ) async -> ResultSet? {
         guard !names.isEmpty,
               case .table(let schema, let table) = tab.kind,
-              let result = tab.result,
               let connection = connections[tab.connectionID],
               !tab.primaryKey.isEmpty
-        else { return }
+        else { return nil }
 
         guard let keyIndexes = keyColumnIndexes(of: result, tab: tab),
               let targets = columnIndexes(of: names, in: result)
-        else { return }
+        else { return nil }
 
         // The query names the rows of the page by their key. Running the page query again would
         // not do: a SELECT without an ORDER BY promises no order, and a second run with another
@@ -32,7 +39,7 @@ extension AppModel {
             guard values.allSatisfy({ !$0.isNull && !$0.isCut }) else { continue }
             keys.append(values.map(\.text))
         }
-        guard !keys.isEmpty else { return }
+        guard !keys.isEmpty else { return nil }
 
         let wanted = tab.primaryKey + names
         let sql = """
@@ -41,12 +48,9 @@ extension AppModel {
             WHERE \(SQLBuilder.keyList(tab.primaryKey, values: keys))
             """
 
-        // The page may have moved while the values were on their way. Writing them into the page
-        // that is there now would show the rows of the page you left.
         guard let fetched = try? await connection.run(sql, limit: keys.count),
-              fetched.columns.count == wanted.count,
-              let current = tab.result, current.id == result.id
-        else { return }
+              fetched.columns.count == wanted.count
+        else { return nil }
 
         let keyCount = tab.primaryKey.count
         var byKey: [String: [DisplayValue]] = [:]
@@ -55,7 +59,7 @@ extension AppModel {
             byKey[key] = Array(row.values.dropFirst(keyCount))
         }
 
-        var updated = current
+        var updated = result
         var changed = false
 
         for rowIndex in updated.rows.indices {
@@ -70,9 +74,8 @@ extension AppModel {
             }
         }
 
-        guard changed else { return }
-        updated.revision += 1
-        tab.result = updated
+        guard changed else { return nil }
+        return updated
     }
 
     private func keyColumnIndexes(of result: ResultSet, tab: QueryTab) -> [Int]? {

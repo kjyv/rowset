@@ -44,12 +44,19 @@ extension AppModel {
             tab.totalRows = tab.pageOffset + result.rows.count
         }
 
+        // The sizes of this page say which of those columns are worth reading after all. They
+        // arrive before the grid does, so the page reaches it complete and paints once.
         let smallEnough = tab.markCutValues(in: &result)
+        let standing = tab.result?.id
+        if let filled = await filledSmallValues(smallEnough, in: result, tab: tab) {
+            result = filled
+        }
+
+        // Another run may have finished while those values were on their way. Its page is the
+        // one you asked for last, so this one says nothing.
+        guard tab.result?.id == standing else { return }
         tab.result = result
         saveSession()
-
-        // The sizes of this page say which of those columns are worth reading after all.
-        await fillSmallValues(smallEnough, in: tab)
     }
 
     /// Runs the query again from the first page, and forgets the count.
