@@ -259,6 +259,66 @@ final class SQLiteTests: XCTestCase {
         XCTAssertFalse(result.rows.contains { $0.values.contains { $0.isPlaceholder } })
     }
 
+    /// A column added since the tab opened must reach the grid on Refresh.
+    ///
+    /// Sorting by name names every column in the SELECT, the way a Postgres table does once it
+    /// cuts a large value. A stale column list then leaves the new column out of the statement.
+    @MainActor
+    func testRefreshShowsAColumnAddedSinceTheTabOpened() async throws {
+        let model = AppModel(
+            store: BookmarkStore(fileURL: directory.appendingPathComponent("bookmarks.json")),
+            sessionStore: SessionStore(fileURL: directory.appendingPathComponent("session.json")),
+            bufferStore: BufferStore(fileURL: directory.appendingPathComponent("consoles.json")))
+        let connection = ConnectionModel(bookmark: bookmark())
+        model.connections[connection.id] = connection
+        await connection.connect()
+        addTeardownBlock { @MainActor in await connection.disconnect() }
+
+        let tab = model.openTable(schema: "main", name: "note", connection: connection)
+        tab.sortsColumnsByName = true
+        await model.runTableQuery(tab)
+        XCTAssertFalse(tab.knownColumns.contains { $0.name == "author" })
+
+        try write("ALTER TABLE note ADD COLUMN author TEXT")
+        await model.refreshTable(tab)
+
+        XCTAssertTrue(
+            tab.knownColumns.contains { $0.name == "author" }, "the catalog was not read again")
+        let result = try XCTUnwrap(tab.result)
+        XCTAssertTrue(
+            result.columns.contains { $0.name == "author" },
+            "the new column never reached the grid")
+    }
+
+    /// The tree shows the new column too, without a second trip to the catalog.
+    @MainActor
+    func testRefreshUpdatesTheColumnsInTheTree() async throws {
+        let model = AppModel(
+            store: BookmarkStore(fileURL: directory.appendingPathComponent("bookmarks.json")),
+            sessionStore: SessionStore(fileURL: directory.appendingPathComponent("session.json")),
+            bufferStore: BufferStore(fileURL: directory.appendingPathComponent("consoles.json")))
+        let connection = ConnectionModel(bookmark: bookmark())
+        model.connections[connection.id] = connection
+        await connection.connect()
+        addTeardownBlock { @MainActor in await connection.disconnect() }
+
+        let schemaNode = try XCTUnwrap(connection.schemas.first)
+        await connection.loadChildren(of: schemaNode)
+        let tableNode = try XCTUnwrap(schemaNode.children?.first { $0.kind.title == "note" })
+        await connection.loadChildren(of: tableNode)
+        XCTAssertFalse(tableNode.children?.contains { $0.kind.title == "author" } ?? true)
+
+        let tab = model.openTable(schema: "main", name: "note", connection: connection)
+        await model.runTableQuery(tab)
+
+        try write("ALTER TABLE note ADD COLUMN author TEXT")
+        await model.refreshTable(tab)
+
+        XCTAssertTrue(
+            tableNode.children?.contains { $0.kind.title == "author" } ?? false,
+            "the tree still shows the old columns")
+    }
+
     @MainActor
     func testAFilterAndASortReachTheFile() async throws {
         let model = AppModel(

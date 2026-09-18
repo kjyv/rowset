@@ -17,6 +17,7 @@ extension AppModel {
             tab.knownColumns = details.enumerated().map { index, info in
                 ResultColumn(id: index, name: info.name, typeName: info.typeName)
             }
+            connection.updateColumns(schema: schema, table: name, from: details)
         }
         await loadPrimaryKey(for: tab)
 
@@ -66,6 +67,10 @@ extension AppModel {
     /// asked to see this page again.
     func refreshTable(_ tab: QueryTab) async {
         tab.totalRows = nil
+        // A column added since the tab opened reaches the grid only through the catalog. The
+        // select list names every column once a large value is cut, so a stale list leaves the
+        // new column out of the statement as well.
+        tab.forgetCatalog()
         await runTableQuery(tab)
     }
 

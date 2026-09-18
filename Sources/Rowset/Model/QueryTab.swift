@@ -282,6 +282,17 @@ final class QueryTab: Identifiable {
         edits.removeAll()
     }
 
+    /// Drops what the catalog said, so the next run reads it again.
+    ///
+    /// The table itself may change while a tab stands on it. The column list is read once and
+    /// then reused, because a page or a sort asks for no catalog, and Refresh is what says the
+    /// table may be another one now.
+    func forgetCatalog() {
+        columnInfo = [:]
+        knownColumns = []
+        primaryKey = []
+    }
+
     /// What the catalog says about the column of a cell.
     func info(at address: CellAddress) -> ColumnInfo? {
         guard let column = result?.column(id: address.columnID) else { return nil }

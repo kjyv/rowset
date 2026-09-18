@@ -179,6 +179,37 @@ final class ConnectionModel: Identifiable {
         }
     }
 
+    /// Puts a fresh column list into the tree, for a table whose columns the tree already shows.
+    ///
+    /// A table tab reads the same catalog rows when it refreshes, so the tree follows from those
+    /// instead of asking the server again. A table nobody opened in the tree stays unread.
+    func updateColumns(schema: String, table: String, from details: [ColumnInfo]) {
+        guard !details.isEmpty,
+              let node = tableNode(schema: schema, table: table),
+              node.children != nil
+        else { return }
+
+        let columns = details.enumerated().map { position, info in
+            TreeNode(kind: .column(
+                schema: schema,
+                table: table,
+                name: info.name,
+                type: info.typeName,
+                nullable: info.isNullable,
+                position: position))
+        }
+        node.children = Self.ordered(columns, byName: node.sortsColumnsByName)
+    }
+
+    /// The tree row of one table or view.
+    private func tableNode(schema: String, table: String) -> TreeNode? {
+        let schemaNode = schemas.first { $0.kind == .schema(name: schema) }
+        return schemaNode?.children?.first {
+            $0.kind == .table(schema: schema, name: table)
+                || $0.kind == .view(schema: schema, name: table)
+        }
+    }
+
     /// Finds a tree row by its id, anywhere in the tree.
     func node(id: UUID) -> TreeNode? {
         var queue = schemas
