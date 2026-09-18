@@ -273,4 +273,9 @@ final class ConnectionModel: Identifiable {
     func runTransaction(_ statements: [String]) async throws {
         try await session.runTransaction(statements)
     }
+
+    /// Asks the database to stop the statement that runs now.
+    func cancelRunningQuery() async {
+        await session.cancelRunningQuery()
+    }
 }

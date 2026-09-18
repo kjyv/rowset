@@ -10,6 +10,7 @@ actor SQLiteSession: DatabaseSession {
     let bookmark: Bookmark
 
     private var handle: OpaquePointer?
+    private let openHandle = HandleBox()
 
     init(bookmark: Bookmark) {
         self.bookmark = bookmark
@@ -40,12 +41,23 @@ actor SQLiteSession: DatabaseSession {
         // Wait rather than fail when another program holds the file.
         sqlite3_busy_timeout(opened, 3_000)
         handle = opened
+        openHandle.set(opened)
     }
 
     func close() async {
         guard let handle else { return }
+        // Clear the box first. A cancel must not reach a handle that is on its way out.
+        openHandle.set(nil)
         sqlite3_close_v2(handle)
         self.handle = nil
+    }
+
+    /// Stops the statement that runs now.
+    ///
+    /// `sqlite3_step` holds the actor for the whole statement, so this never waits for isolation.
+    /// SQLite documents `sqlite3_interrupt` as safe from another thread.
+    nonisolated func cancelRunningQuery() async {
+        openHandle.interrupt()
     }
 
     // MARK: - Queries
@@ -71,7 +83,13 @@ actor SQLiteSession: DatabaseSession {
         while true {
             let step = sqlite3_step(statement)
             if step == SQLITE_DONE { break }
-            guard step == SQLITE_ROW else { throw SQLiteError.statement(message(handle)) }
+            guard step == SQLITE_ROW else {
+                // An interrupt arrives as the step result or as the handle's error code.
+                if step == SQLITE_INTERRUPT || sqlite3_errcode(handle) == SQLITE_INTERRUPT {
+                    throw QueryCanceled()
+                }
+                throw SQLiteError.statement(message(handle))
+            }
 
             if index >= maxRows {
                 result.truncated = true
@@ -197,5 +215,27 @@ enum SQLiteError: LocalizedError {
         case .statement(let message):
             message
         }
+    }
+}
+
+/// Holds the open handle where a call from another thread can reach it.
+///
+/// The session actor is busy for the whole statement, so `cancelRunningQuery` cannot read its
+/// state. The lock keeps `sqlite3_interrupt` from meeting a handle that `close` is discarding.
+private final class HandleBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var handle: OpaquePointer?
+
+    func set(_ value: OpaquePointer?) {
+        lock.lock()
+        defer { lock.unlock() }
+        handle = value
+    }
+
+    func interrupt() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let handle else { return }
+        sqlite3_interrupt(handle)
     }
 }

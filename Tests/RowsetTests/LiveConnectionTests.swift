@@ -35,6 +35,46 @@ final class LiveConnectionTests: XCTestCase {
         ProcessInfo.processInfo.environment["ROWSET_LIVE_SCHEMA"] ?? "public"
     }
 
+    /// Stop reaches the server, not only the client.
+    ///
+    /// `pg_sleep` waits on the server, so a client that only stopped reading would still see the
+    /// statement run to its end.
+    func testStopEndsALongStatement() async throws {
+        let bookmark = try liveBookmark()
+        let session = PostgresSession(bookmark: bookmark)
+        try await session.connect()
+        addTeardownBlock { await session.close() }
+
+        let running = Task { try await session.query("SELECT pg_sleep(30)", maxRows: 1) }
+        // The cancel opens its own connection, which on an IAM bookmark first fetches a token.
+        try await Task.sleep(nanoseconds: 500_000_000)
+
+        let start = Date()
+        await session.cancelRunningQuery()
+        do {
+            _ = try await running.value
+            XCTFail("the statement should have stopped")
+        } catch is QueryCanceled {
+            XCTAssertLessThan(Date().timeIntervalSince(start), 25, "the stop waited out the sleep")
+        }
+    }
+
+    /// The connection stays open, so the next statement needs no reconnect.
+    func testTheSessionSurvivesAStop() async throws {
+        let bookmark = try liveBookmark()
+        let session = PostgresSession(bookmark: bookmark)
+        try await session.connect()
+        addTeardownBlock { await session.close() }
+
+        let running = Task { try await session.query("SELECT pg_sleep(30)", maxRows: 1) }
+        try await Task.sleep(nanoseconds: 500_000_000)
+        await session.cancelRunningQuery()
+        _ = try? await running.value
+
+        let result = try await session.query("SELECT 1", maxRows: 1)
+        XCTAssertEqual(result.rows.first?.values.first?.text, "1")
+    }
+
     func testTokenGeneratorReturnsAToken() async throws {
         let bookmark = try liveBookmark()
         let token = try await AWSTokenProvider.authToken(for: bookmark)

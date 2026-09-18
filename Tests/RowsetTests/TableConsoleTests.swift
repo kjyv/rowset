@@ -21,6 +21,43 @@ final class TableConsoleTests: XCTestCase {
         return tab
     }
 
+    // MARK: - Stopping a statement
+
+    /// Stop must not wait for the connection. The token fetch has no timeout and a dead socket
+    /// answers nothing, so a tab that waited for either would stay stuck.
+    func testStopFreesTheTabAtOnce() {
+        let model = model()
+        let tab = tableTab()
+        tab.runToken = UUID()
+        tab.isRunning = true
+        tab.runningWork = Task {
+            try await Task.sleep(nanoseconds: 60_000_000_000)
+            return ResultSet()
+        }
+
+        XCTAssertTrue(tab.canStop)
+        model.stopRunningQuery(tab)
+
+        XCTAssertFalse(tab.isRunning, "the tab does not wait for the connection")
+        XCTAssertTrue(tab.wasCanceled)
+        XCTAssertNil(tab.runningWork)
+        XCTAssertNil(tab.runToken)
+        XCTAssertFalse(tab.canStop)
+    }
+
+    /// An edit sets `isRunning` with no statement of its own, and there is nothing to stop then.
+    func testStopLeavesATabThatRunsNoStatement() {
+        let model = model()
+        let tab = tableTab()
+        tab.isRunning = true
+
+        XCTAssertFalse(tab.canStop)
+        model.stopRunningQuery(tab)
+
+        XCTAssertTrue(tab.isRunning, "the edit keeps the tab")
+        XCTAssertFalse(tab.wasCanceled)
+    }
+
     // MARK: - The query the console starts with
 
     func testTheConsoleTakesThePlainTableQuery() {

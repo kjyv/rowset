@@ -54,6 +54,61 @@ final class SQLiteTests: XCTestCase {
         return bookmark
     }
 
+    // MARK: - Stopping a statement
+
+    /// A statement long enough to interrupt, but bounded, so a missed interrupt fails the test
+    /// instead of hanging it.
+    private static let longStatement = """
+        WITH RECURSIVE counter(n) AS (
+          SELECT 1 UNION ALL SELECT n + 1 FROM counter WHERE n < 20000000
+        )
+        SELECT count(*) FROM counter
+        """
+
+    /// The actor runs sqlite3_step for the whole statement, so the cancel must not wait for it.
+    func testStopEndsALongStatement() async throws {
+        let session = SQLiteSession(bookmark: bookmark())
+        try await session.connect()
+        addTeardownBlock { await session.close() }
+
+        let running = Task { try await session.query(Self.longStatement, maxRows: 1) }
+        // Let the statement reach sqlite3_step. An interrupt before that does nothing.
+        try await Task.sleep(nanoseconds: 200_000_000)
+        await session.cancelRunningQuery()
+
+        do {
+            _ = try await running.value
+            XCTFail("the statement should have stopped")
+        } catch is QueryCanceled {
+            // What Stop reports.
+        }
+    }
+
+    /// The session stays usable, so the next statement needs no reconnect.
+    func testTheSessionSurvivesAStop() async throws {
+        let session = SQLiteSession(bookmark: bookmark())
+        try await session.connect()
+        addTeardownBlock { await session.close() }
+
+        let running = Task { try await session.query(Self.longStatement, maxRows: 1) }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        await session.cancelRunningQuery()
+        _ = try? await running.value
+
+        let result = try await session.query("SELECT count(*) FROM note", maxRows: 1)
+        XCTAssertEqual(result.rows.first?.value(at: 0).text, "2")
+    }
+
+    func testAStopWithNothingRunningDoesNothing() async throws {
+        let session = SQLiteSession(bookmark: bookmark())
+        try await session.connect()
+
+        await session.cancelRunningQuery()
+        await session.close()
+        // A closed session must not reach a handle that is gone.
+        await session.cancelRunningQuery()
+    }
+
     // MARK: - The session
 
     func testAFileOpensAndReadsItsRows() async throws {

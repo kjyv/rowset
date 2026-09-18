@@ -295,7 +295,26 @@ final class QueryTab: Identifiable {
     var result: ResultSet?
     var errorText: String?
     var isRunning = false
+    /// True when the last statement ended because Stop asked for it.
+    var wasCanceled = false
     var lastStatement = ""
+    /// The statement in flight. Stop cancels this, which is what frees the tab.
+    @ObservationIgnored var runningWork: Task<ResultSet, any Error>?
+    /// Names the run that owns the tab now.
+    ///
+    /// Stop hands the tab on at once, without waiting for the connection. A run that comes back
+    /// later carries an old token, and then it writes nothing.
+    @ObservationIgnored var runToken: UUID?
+
+    /// True when there is a statement Stop can reach.
+    var canStop: Bool { isRunning && runningWork != nil }
+
+    /// Ends the run that owns the tab now.
+    func finishRun() {
+        runToken = nil
+        runningWork = nil
+        isRunning = false
+    }
 
     init(connectionID: UUID, connectionName: String, kind: Kind, rowLimit: Int) {
         self.connectionID = connectionID

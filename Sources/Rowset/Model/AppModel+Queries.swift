@@ -303,7 +303,7 @@ extension AppModel {
         tab.resetPaging()
         for statement in statements {
             await run(statement.text, in: tab, connection: connection, expectedColumns: [])
-            if tab.errorText != nil { return }
+            if tab.errorText != nil || tab.wasCanceled { return }
         }
     }
 
@@ -331,26 +331,72 @@ extension AppModel {
         expectedColumns: [ResultColumn]
     ) async -> ResultSet? {
         guard !tab.isRunning else { return nil }
+        let token = UUID()
+        tab.runToken = token
         tab.isRunning = true
         tab.errorText = nil
+        tab.wasCanceled = false
         tab.lastStatement = sql
-        defer { tab.isRunning = false }
+
+        // One row over the page limit, so the query says whether more follow.
+        let work = Task {
+            try await connection.run(
+                sql, limit: tab.rowLimit + 1, expectedColumns: expectedColumns)
+        }
+        tab.runningWork = work
+        defer { if tab.runToken == token { tab.finishRun() } }
 
         do {
-            // One row over the page limit, so the query says whether more follow.
-            return try await connection.run(
-                sql, limit: tab.rowLimit + 1, expectedColumns: expectedColumns)
-        } catch let error as AWSAuthError {
-            tab.errorText = error.errorDescription
-            if case .ssoExpired(let profile, let detail) = error {
-                ssoPrompt = SSOPrompt(profile: profile, detail: detail)
-            }
+            let result = try await work.value
+            guard tab.runToken == token else { return nil }
+            return result
         } catch {
-            tab.errorText = DatabaseErrorText.describe(error)
+            // A run that no longer owns the tab says nothing. Stop moved on without it.
+            guard tab.runToken == token else { return nil }
+            if error is CancellationError || error is QueryCanceled {
+                // The result on screen stays. A stop leaves the tab where it was.
+                tab.wasCanceled = true
+            } else if let auth = error as? AWSAuthError {
+                tab.errorText = auth.errorDescription
+                if case .ssoExpired(let profile, let detail) = auth {
+                    ssoPrompt = SSOPrompt(profile: profile, detail: detail)
+                }
+            } else {
+                tab.errorText = DatabaseErrorText.describe(error)
+            }
         }
 
         saveSession()
         return nil
+    }
+
+    /// Stops the statement of this tab.
+    ///
+    /// The tab comes free at once. The rest runs in the background, and the order there matters:
+    ///
+    /// 1. The server hears first, while the connection still names the backend that runs the
+    ///    statement. A long statement burns CPU until `pg_cancel_backend` reaches it.
+    /// 2. The client task is cancelled after that. It is the fallback for a connection that never
+    ///    answers, where no request can reach any server.
+    ///
+    /// Cancelling the task first closes the connection, and closing it drops the backend name
+    /// with it. The request would then name nothing, or a backend the next connect just opened,
+    /// and the statement would run to its end.
+    func stopRunningQuery(_ tab: QueryTab) {
+        guard tab.canStop else { return }
+        let work = tab.runningWork
+        tab.wasCanceled = true
+        tab.finishRun()
+        saveSession()
+
+        guard let connection = connection(id: tab.connectionID) else {
+            work?.cancel()
+            return
+        }
+        Task {
+            await connection.cancelRunningQuery()
+            work?.cancel()
+        }
     }
 
     /// Applies a new sort and runs the query again.

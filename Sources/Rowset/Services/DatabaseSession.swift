@@ -23,7 +23,20 @@ protocol DatabaseSession: Actor {
     /// Each statement ends with `RETURNING 1`, so a count of the returned rows says whether it
     /// hit the row it aimed at. Anything but one row rolls the whole batch back.
     func runTransaction(_ statements: [String]) async throws
+
+    /// Asks the database to stop the statement that runs now.
+    ///
+    /// This is `nonisolated` because a session can hold its actor for the whole statement. A
+    /// request that waited for isolation would arrive after the statement it means to stop.
+    /// The call returns once the request is away, and `query` then throws `QueryCanceled`.
+    nonisolated func cancelRunningQuery() async
 }
+
+/// The statement stopped because the app asked for it.
+///
+/// Both drivers report a stop this way, so the tab can tell it apart from a statement that
+/// failed on its own.
+struct QueryCanceled: Error {}
 
 extension DatabaseSession {
     func query(_ sql: String, maxRows: Int) async throws -> ResultSet {

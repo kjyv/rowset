@@ -38,6 +38,16 @@ struct TableTabView: View {
             .help("Fetch this page again")
             .disabled(tab.isRunning)
 
+            if tab.canStop {
+                Button {
+                    model.stopRunningQuery(tab)
+                } label: {
+                    Image(systemName: "stop.fill")
+                }
+                .keyboardShortcut(".", modifiers: .command)
+                .help("Stop the running statement (Command-.)")
+            }
+
             Text("WHERE")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)

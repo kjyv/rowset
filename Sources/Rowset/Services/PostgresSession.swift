@@ -37,6 +37,8 @@ actor PostgresSession: DatabaseSession {
 
     private var connection: PostgresConnection?
     private var nextConnectionID = 1
+    /// The server-side process of the open connection. `pg_cancel_backend` names it.
+    private var backendPID: Int32?
     /// The connect that is running now. A second caller joins it instead of opening a rival.
     private var connectTask: Task<Void, any Error>?
     private let logger = Logger(label: "tech.alcemy.Rowset.postgres")
@@ -72,14 +74,7 @@ actor PostgresSession: DatabaseSession {
     private func openConnection() async throws {
         await close()
 
-        let secret = try await password()
-        let configuration = PostgresConnection.Configuration(
-            host: bookmark.host,
-            port: bookmark.port,
-            username: bookmark.username,
-            password: secret,
-            database: bookmark.database,
-            tls: try makeTLS())
+        let configuration = try await makeConfiguration()
 
         let id = nextConnectionID
         nextConnectionID += 1
@@ -93,11 +88,32 @@ actor PostgresSession: DatabaseSession {
         // Never drop a live connection on the floor. Closing it is the caller of this rule.
         await close()
         connection = opened
+        backendPID = try? await readBackendPID(from: opened)
+    }
+
+    private func makeConfiguration() async throws -> PostgresConnection.Configuration {
+        PostgresConnection.Configuration(
+            host: bookmark.host,
+            port: bookmark.port,
+            username: bookmark.username,
+            password: try await password(),
+            database: bookmark.database,
+            tls: try makeTLS())
+    }
+
+    private func readBackendPID(from connection: PostgresConnection) async throws -> Int32? {
+        let stream = try await connection.query(
+            PostgresQuery(unsafeSQL: "SELECT pg_backend_pid()"), logger: logger)
+        for try await row in stream {
+            return try row.decode(Int32.self)
+        }
+        return nil
     }
 
     func close() async {
         guard let connection else { return }
         self.connection = nil
+        backendPID = nil
         try? await connection.close()
     }
 
@@ -138,6 +154,51 @@ actor PostgresSession: DatabaseSession {
         return .require(try NIOSSLContext(configuration: configuration))
     }
 
+    // MARK: - Cancel
+
+    /// Asks the server to stop the statement that runs now.
+    ///
+    /// The connection that carries the statement cannot carry the request beside it, so this
+    /// opens a second one for `pg_cancel_backend`. PostgresNIO keeps the CancelRequest message of
+    /// the wire protocol to itself, along with the backend key it needs.
+    nonisolated func cancelRunningQuery() async {
+        await sendCancelRequest()
+    }
+
+    /// The actor is suspended while it reads the rows, so this runs beside the query it stops.
+    ///
+    /// A request that cannot go out leaves the connection in a state nobody can name: a statement
+    /// may still be sending rows nobody reads. Closing it is what makes the next statement start
+    /// clean, and `query` opens a new one by itself.
+    private func sendCancelRequest() async {
+        guard let backendPID else {
+            await close()
+            return
+        }
+
+        let id = nextConnectionID
+        nextConnectionID += 1
+
+        do {
+            var configuration = try await makeConfiguration()
+            // A stop must not wait as long as a first connect may.
+            configuration.options.connectTimeout = .seconds(5)
+
+            let helper = try await PostgresConnection.connect(
+                on: PostgresConnection.defaultEventLoopGroup.any(),
+                configuration: configuration,
+                id: id,
+                logger: logger)
+            _ = try? await helper.query(
+                PostgresQuery(unsafeSQL: "SELECT pg_cancel_backend(\(backendPID))"),
+                logger: logger)
+            try? await helper.close()
+        } catch {
+            logger.warning("the cancel request could not open a connection: \(error)")
+            await close()
+        }
+    }
+
     // MARK: - Queries
 
     /// Runs one statement and reads at most `maxRows` rows.
@@ -148,10 +209,19 @@ actor PostgresSession: DatabaseSession {
         do {
             return try await runQuery(sql, maxRows: maxRows, expectedColumns: expectedColumns)
         } catch {
+            if Self.isCancellation(error) { throw QueryCanceled() }
+            // A statement the app stopped must not come back on a fresh connection.
+            if Task.isCancelled { throw CancellationError() }
             guard connectionIsGone else { throw error }
             try await connect()
             return try await runQuery(sql, maxRows: maxRows, expectedColumns: expectedColumns)
         }
+    }
+
+    /// Postgres answers a statement it stopped with SQLSTATE 57014.
+    static func isCancellation(_ error: any Error) -> Bool {
+        guard let psql = error as? PSQLError else { return false }
+        return psql.serverInfo?[.sqlState] == "57014"
     }
 
     private var connectionIsGone: Bool {
