@@ -42,6 +42,14 @@ actor PostgresSession: DatabaseSession {
     /// Carries the catalog reads and the row counts, away from the statements you type.
     private var backgroundConnection: PostgresConnection?
     private var backgroundConnectTask: Task<Void, any Error>?
+    private var keepAliveTask: Task<Void, Never>?
+    /// How many statements the app waits for now. The keepalive leaves a busy connection alone.
+    private var statementsInFlight = 0
+
+    /// How long the connection may sit idle before the app touches it.
+    ///
+    /// An AWS network load balancer drops an idle flow after 350 seconds, and other paths sooner.
+    private static let keepAliveInterval: UInt64 = 60 * NSEC_PER_SEC
     /// The connect that is running now. A second caller joins it instead of opening a rival.
     private var connectTask: Task<Void, any Error>?
     private let logger = Logger(label: "tech.alcemy.Rowset.postgres")
@@ -92,6 +100,7 @@ actor PostgresSession: DatabaseSession {
         await close()
         connection = opened
         backendPID = try? await readBackendPID(from: opened)
+        startKeepAlive()
     }
 
     private func makeConfiguration() async throws -> PostgresConnection.Configuration {
@@ -114,6 +123,8 @@ actor PostgresSession: DatabaseSession {
     }
 
     func close() async {
+        keepAliveTask?.cancel()
+        keepAliveTask = nil
         if let backgroundConnection {
             self.backgroundConnection = nil
             try? await backgroundConnection.close()
@@ -222,6 +233,52 @@ actor PostgresSession: DatabaseSession {
         backgroundConnection = opened
     }
 
+    // MARK: - Keepalive
+
+    /// Sends a cheap statement now and then, so an idle connection cannot go stale unnoticed.
+    ///
+    /// A NAT or a firewall drops an idle flow without telling either end. `isClosed` stays false,
+    /// the next statement goes nowhere, and the app waits for the operating system to give up.
+    /// That takes over a minute and reads as a timeout although the server is fine. Traffic keeps
+    /// the flow, and a failure here closes the connection while nobody waits on it.
+    private func startKeepAlive() {
+        keepAliveTask?.cancel()
+        keepAliveTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: Self.keepAliveInterval)
+                if Task.isCancelled { return }
+                await self?.sendKeepAlive()
+            }
+        }
+    }
+
+    private func sendKeepAlive() async {
+        if statementsInFlight == 0, let connection, !connection.isClosed {
+            if await !ping(connection) {
+                logger.info("the keepalive failed, so the connection goes")
+                await close()
+                return
+            }
+        }
+        if let backgroundConnection, !backgroundConnection.isClosed,
+           await !ping(backgroundConnection) {
+            logger.info("the keepalive failed, so the background connection goes")
+            self.backgroundConnection = nil
+            try? await backgroundConnection.close()
+        }
+    }
+
+    private func ping(_ connection: PostgresConnection) async -> Bool {
+        do {
+            let stream = try await connection.query(
+                PostgresQuery(unsafeSQL: "SELECT 1"), logger: logger)
+            for try await _ in stream {}
+            return true
+        } catch {
+            return false
+        }
+    }
+
     // MARK: - Cancel
 
     /// Asks the server to stop the statement that runs now.
@@ -302,6 +359,8 @@ actor PostgresSession: DatabaseSession {
     ) async throws -> ResultSet {
         guard let connection, !connection.isClosed else { throw SessionError.notConnected }
 
+        statementsInFlight += 1
+        defer { statementsInFlight -= 1 }
         return try await read(sql, maxRows: maxRows, expectedColumns: expectedColumns, on: connection)
     }
 
