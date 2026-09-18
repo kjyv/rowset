@@ -54,6 +54,17 @@ final class SQLiteTests: XCTestCase {
         return bookmark
     }
 
+    /// A file session answers background work from the connection it already has.
+    func testBackgroundWorkReadsTheFile() async throws {
+        let session = SQLiteSession(bookmark: bookmark())
+        try await session.connect()
+        addTeardownBlock { await session.close() }
+
+        let result = try await session.queryInBackground(
+            "SELECT count(*) FROM note", maxRows: 1, expectedColumns: [])
+        XCTAssertEqual(result.rows.first?.value(at: 0).text, "2")
+    }
+
     // MARK: - Stopping a statement
 
     /// A statement long enough to interrupt, but bounded, so a missed interrupt fails the test

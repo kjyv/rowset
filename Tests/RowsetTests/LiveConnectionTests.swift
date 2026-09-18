@@ -35,6 +35,32 @@ final class LiveConnectionTests: XCTestCase {
         ProcessInfo.processInfo.environment["ROWSET_LIVE_SCHEMA"] ?? "public"
     }
 
+    /// The sidebar must answer while a statement runs.
+    ///
+    /// One connection carries one statement at a time, so a catalog read on the session
+    /// connection would wait for `pg_sleep` to finish.
+    func testBackgroundWorkRunsBesideALongStatement() async throws {
+        let bookmark = try liveBookmark()
+        let session = PostgresSession(bookmark: bookmark)
+        try await session.connect()
+        addTeardownBlock { await session.close() }
+
+        let running = Task { try await session.query("SELECT pg_sleep(20)", maxRows: 1) }
+        try await Task.sleep(nanoseconds: 500_000_000)
+
+        // This opens the background connection, which on an IAM bookmark fetches a token first.
+        let start = Date()
+        let result = try await session.queryInBackground(
+            "SELECT 1", maxRows: 1, expectedColumns: [])
+        let elapsed = Date().timeIntervalSince(start)
+
+        XCTAssertEqual(result.rows.first?.values.first?.text, "1")
+        XCTAssertLessThan(elapsed, 15, "the background statement waited for the long one")
+
+        running.cancel()
+        _ = try? await running.value
+    }
+
     /// Stop reaches the server, not only the client.
     ///
     /// `pg_sleep` waits on the server, so a client that only stopped reading would still see the

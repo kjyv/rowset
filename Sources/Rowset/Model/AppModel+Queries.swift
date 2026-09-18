@@ -124,7 +124,7 @@ extension AppModel {
 
         let filter = tab.filterText
         let sql = SQLBuilder.countRows(schema: schema, table: name, filter: filter)
-        guard let result = try? await connection.run(sql, limit: 1),
+        guard let result = try? await connection.runInBackground(sql, limit: 1),
               let text = result.rows.first?.values.first?.text,
               let count = Int(text),
               // A filter typed while the count ran counts other rows.
@@ -281,7 +281,8 @@ extension AppModel {
         tab.isCounting = true
         defer { tab.isCounting = false }
 
-        guard let result = try? await connection.run(SQLBuilder.countOf(statement), limit: 1),
+        guard let result = try? await connection.runInBackground(
+                SQLBuilder.countOf(statement), limit: 1),
               let text = result.rows.first?.values.first?.text,
               let count = Int(text),
               // A statement run while the count ran gives other rows.

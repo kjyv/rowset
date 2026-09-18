@@ -39,6 +39,9 @@ actor PostgresSession: DatabaseSession {
     private var nextConnectionID = 1
     /// The server-side process of the open connection. `pg_cancel_backend` names it.
     private var backendPID: Int32?
+    /// Carries the catalog reads and the row counts, away from the statements you type.
+    private var backgroundConnection: PostgresConnection?
+    private var backgroundConnectTask: Task<Void, any Error>?
     /// The connect that is running now. A second caller joins it instead of opening a rival.
     private var connectTask: Task<Void, any Error>?
     private let logger = Logger(label: "tech.alcemy.Rowset.postgres")
@@ -111,6 +114,10 @@ actor PostgresSession: DatabaseSession {
     }
 
     func close() async {
+        if let backgroundConnection {
+            self.backgroundConnection = nil
+            try? await backgroundConnection.close()
+        }
         guard let connection else { return }
         self.connection = nil
         backendPID = nil
@@ -152,6 +159,67 @@ actor PostgresSession: DatabaseSession {
         }
 
         return .require(try NIOSSLContext(configuration: configuration))
+    }
+
+    // MARK: - Background work
+
+    /// Runs a statement on a connection of its own.
+    ///
+    /// One connection carries one statement at a time. On the session connection the catalog
+    /// reads and the counts would queue behind a long statement, and the sidebar would stop
+    /// answering while a query runs. They hold no session state, so another connection serves
+    /// them as well.
+    func queryInBackground(
+        _ sql: String, maxRows: Int, expectedColumns: [ResultColumn]
+    ) async throws -> ResultSet {
+        try await connectBackground()
+        do {
+            return try await runBackgroundQuery(sql, maxRows: maxRows, expectedColumns: expectedColumns)
+        } catch {
+            if Task.isCancelled { throw CancellationError() }
+            guard backgroundConnection?.isClosed ?? true else { throw error }
+            try await connectBackground()
+            return try await runBackgroundQuery(sql, maxRows: maxRows, expectedColumns: expectedColumns)
+        }
+    }
+
+    private func runBackgroundQuery(
+        _ sql: String, maxRows: Int, expectedColumns: [ResultColumn]
+    ) async throws -> ResultSet {
+        guard let backgroundConnection, !backgroundConnection.isClosed else {
+            throw SessionError.notConnected
+        }
+        return try await read(
+            sql, maxRows: maxRows, expectedColumns: expectedColumns, on: backgroundConnection)
+    }
+
+    /// Opens the background connection, or joins the open that is already running.
+    private func connectBackground() async throws {
+        if let backgroundConnection, !backgroundConnection.isClosed { return }
+        if let backgroundConnectTask {
+            try await backgroundConnectTask.value
+            return
+        }
+
+        let task = Task { try await self.openBackgroundConnection() }
+        backgroundConnectTask = task
+        defer { backgroundConnectTask = nil }
+        try await task.value
+    }
+
+    private func openBackgroundConnection() async throws {
+        let id = nextConnectionID
+        nextConnectionID += 1
+
+        // Its own token, because an IAM token lasts 15 minutes and this opens long after connect.
+        let opened = try await PostgresConnection.connect(
+            on: PostgresConnection.defaultEventLoopGroup.any(),
+            configuration: try await makeConfiguration(),
+            id: id,
+            logger: logger)
+
+        if let old = backgroundConnection { try? await old.close() }
+        backgroundConnection = opened
     }
 
     // MARK: - Cancel
@@ -234,6 +302,13 @@ actor PostgresSession: DatabaseSession {
     ) async throws -> ResultSet {
         guard let connection, !connection.isClosed else { throw SessionError.notConnected }
 
+        return try await read(sql, maxRows: maxRows, expectedColumns: expectedColumns, on: connection)
+    }
+
+    /// Reads the rows of one statement from one connection.
+    private func read(
+        _ sql: String, maxRows: Int, expectedColumns: [ResultColumn], on connection: PostgresConnection
+    ) async throws -> ResultSet {
         let start = DispatchTime.now()
         let stream = try await connection.query(PostgresQuery(unsafeSQL: sql), logger: logger)
 

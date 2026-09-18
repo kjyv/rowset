@@ -24,6 +24,14 @@ protocol DatabaseSession: Actor {
     /// hit the row it aimed at. Anything but one row rolls the whole batch back.
     func runTransaction(_ statements: [String]) async throws
 
+    /// Runs a statement away from the session connection.
+    ///
+    /// The catalog reads and the row counts use this. They carry no session state, and they must
+    /// not wait behind a statement you typed.
+    func queryInBackground(
+        _ sql: String, maxRows: Int, expectedColumns: [ResultColumn]
+    ) async throws -> ResultSet
+
     /// Asks the database to stop the statement that runs now.
     ///
     /// This is `nonisolated` because a session can hold its actor for the whole statement. A
@@ -41,6 +49,19 @@ struct QueryCanceled: Error {}
 extension DatabaseSession {
     func query(_ sql: String, maxRows: Int) async throws -> ResultSet {
         try await query(sql, maxRows: maxRows, expectedColumns: [])
+    }
+
+    /// A second connection buys nothing over a local file, so a file session uses the one it has.
+    func queryInBackground(
+        _ sql: String, maxRows: Int, expectedColumns: [ResultColumn]
+    ) async throws -> ResultSet {
+        try await query(sql, maxRows: maxRows, expectedColumns: expectedColumns)
+    }
+
+    /// Reads the rows of a background statement as plain strings. The catalog queries use this.
+    func queryStringsInBackground(_ sql: String, maxRows: Int = 10_000) async throws -> [[String]] {
+        let result = try await queryInBackground(sql, maxRows: maxRows, expectedColumns: [])
+        return result.rows.map { row in row.values.map { $0.isNull ? "" : $0.text } }
     }
 
     /// Runs a statement and gives the rows back as plain strings. The catalog queries use this.
