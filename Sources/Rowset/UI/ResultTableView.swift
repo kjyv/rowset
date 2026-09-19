@@ -161,10 +161,6 @@ struct ResultTableView: NSViewRepresentable {
             defer {
                 if takenOver {
                     applyColumnWidths()
-                    // The rows go and come back. Marking them leaves the moment and the area to
-                    // AppKit, and a row that repaints only part of itself keeps the column edges
-                    // of the tab before this one. A tab switch is rare enough to pay for this.
-                    tableView.reloadData()
                     restoreScroll()
                 }
             }
