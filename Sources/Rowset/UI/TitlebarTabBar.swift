@@ -34,6 +34,18 @@ struct TitlebarTabBar: NSViewRepresentable {
         coordinator.remove()
     }
 
+    /// Holds the bar, and keeps the title bar from taking the drag.
+    ///
+    /// A view in the title bar moves the window when you drag it, and the tab bar has its own
+    /// use for a drag. The window still moves by the title bar beside the bar.
+    final class TabBarContainerView: NSView {
+        override var mouseDownCanMoveWindow: Bool { false }
+    }
+
+    final class TabBarHostingView: NSHostingView<TabBarView> {
+        override var mouseDownCanMoveWindow: Bool { false }
+    }
+
     final class ProbeView: NSView {
         var onWindowChange: ((NSWindow?) -> Void)?
 
@@ -60,10 +72,11 @@ struct TitlebarTabBar: NSViewRepresentable {
             guard let window else { return }
             self.window = window
 
-            let hosting = NSHostingView(rootView: TabBarView(model: model))
+            let hosting = TabBarHostingView(rootView: TabBarView(model: model))
             hosting.autoresizingMask = [.width, .height]
 
-            let container = NSView(frame: NSRect(x: 0, y: 0, width: 600, height: TitlebarTabBar.height))
+            let container = TabBarContainerView(
+                frame: NSRect(x: 0, y: 0, width: 600, height: TitlebarTabBar.height))
             container.addSubview(hosting)
             hosting.frame = container.bounds
             self.container = container

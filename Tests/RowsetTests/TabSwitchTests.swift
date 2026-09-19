@@ -72,6 +72,53 @@ final class TabSwitchTests: XCTestCase {
         return ConnectionModel(bookmark: bookmark)
     }
 
+    // MARK: - Dragging a tab along the bar
+
+    /// Four consoles, so the order is the only thing that tells them apart.
+    private func barOfFour(_ model: AppModel, _ connection: ConnectionModel) -> [QueryTab] {
+        (0..<4).map { _ in model.openSQLTab(connection: connection) }
+    }
+
+    func testATabDraggedRightLandsAfterTheOneYouDropItOn() async throws {
+        let model = makeModel()
+        let connection = makeConnection()
+        model.connections[connection.id] = connection
+        await connection.connect()
+        addTeardownBlock { @MainActor in await connection.disconnect() }
+
+        let tabs = barOfFour(model, connection)
+        XCTAssertTrue(model.moveTab(id: tabs[0].id, onto: tabs[2].id))
+        XCTAssertEqual(model.tabs.map(\.id), [tabs[1], tabs[2], tabs[0], tabs[3]].map(\.id))
+    }
+
+    func testATabDraggedLeftLandsBeforeTheOneYouDropItOn() async throws {
+        let model = makeModel()
+        let connection = makeConnection()
+        model.connections[connection.id] = connection
+        await connection.connect()
+        addTeardownBlock { @MainActor in await connection.disconnect() }
+
+        let tabs = barOfFour(model, connection)
+        XCTAssertTrue(model.moveTab(id: tabs[3].id, onto: tabs[1].id))
+        XCTAssertEqual(model.tabs.map(\.id), [tabs[0], tabs[3], tabs[1], tabs[2]].map(\.id))
+    }
+
+    /// A tab dropped on itself, and an id from nowhere, both change nothing.
+    func testAMoveThatMeansNothingChangesNothing() async throws {
+        let model = makeModel()
+        let connection = makeConnection()
+        model.connections[connection.id] = connection
+        await connection.connect()
+        addTeardownBlock { @MainActor in await connection.disconnect() }
+
+        let tabs = barOfFour(model, connection)
+        let order = model.tabs.map(\.id)
+        XCTAssertFalse(model.moveTab(id: tabs[1].id, onto: tabs[1].id))
+        XCTAssertFalse(model.moveTab(id: UUID(), onto: tabs[1].id))
+        XCTAssertFalse(model.moveTab(id: tabs[1].id, onto: UUID()))
+        XCTAssertEqual(model.tabs.map(\.id), order)
+    }
+
     /// A tab keeps the widths you gave it, whatever stood in the tab area meanwhile.
     ///
     /// The grid is one NSView. Two table tabs share it, and a console takes it away and gives

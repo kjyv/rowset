@@ -7,6 +7,10 @@ struct TabBarView: View {
     /// The height of one tab row. The bar material may fill the strip above it, but no tab may.
     static let height: CGFloat = 28
 
+    /// The tab you picked up, and the tab the pointer stands on.
+    @State private var dragging: QueryTab.ID?
+    @State private var dropTarget: QueryTab.ID?
+
     var body: some View {
         HStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
@@ -18,6 +22,33 @@ struct TabBarView: View {
                             isSelected: tab.id == model.selectedTabID,
                             select: { model.selectedTabID = tab.id },
                             close: { model.closeTab(id: tab.id) })
+                            // The id of the tab is all the drag carries. The tabs of this
+                            // window are the only place it means anything. `onDrag` and not
+                            // `draggable`, because the caret needs to know what you picked up
+                            // and only this one says so as the drag starts.
+                            .onDrag {
+                                dragging = tab.id
+                                return NSItemProvider(object: tab.id.uuidString as NSString)
+                            }
+                            .dropDestination(for: String.self) { items, _ in
+                                defer {
+                                    dragging = nil
+                                    dropTarget = nil
+                                }
+                                guard let dragged = items.first,
+                                      let id = UUID(uuidString: dragged)
+                                else { return false }
+                                return model.moveTab(id: id, onto: tab.id)
+                            } isTargeted: { targeted in
+                                if targeted {
+                                    dropTarget = tab.id
+                                } else if dropTarget == tab.id {
+                                    dropTarget = nil
+                                }
+                            }
+                            .overlay(alignment: landsAfter(tab) ? .trailing : .leading) {
+                                caret(for: tab)
+                            }
                         Divider().frame(height: 18)
                     }
                 }
@@ -26,6 +57,29 @@ struct TabBarView: View {
             newQueryButton
         }
         .frame(height: TabBarView.height)
+    }
+
+    /// The line that says where the tab you carry is going to land.
+    @ViewBuilder
+    private func caret(for tab: QueryTab) -> some View {
+        if dropTarget == tab.id, let dragging, dragging != tab.id {
+            Rectangle()
+                .fill(Color.accentColor)
+                .frame(width: 2)
+                .padding(.vertical, 3)
+        }
+    }
+
+    /// True when the tab you carry lands to the right of this one.
+    ///
+    /// It follows `moveTab`: a tab that comes from the left goes after the tab you drop it on,
+    /// and one that comes from the right goes before it.
+    private func landsAfter(_ tab: QueryTab) -> Bool {
+        guard let dragging,
+              let from = model.tabs.firstIndex(where: { $0.id == dragging }),
+              let to = model.tabs.firstIndex(where: { $0.id == tab.id })
+        else { return false }
+        return from < to
     }
 
     /// The same action as Command-T. A shortcut with no button is a shortcut nobody finds.

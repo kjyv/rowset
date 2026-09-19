@@ -319,6 +319,26 @@ final class AppModel {
         return tab
     }
 
+    /// Puts one tab where another stands, for a tab you drag along the bar.
+    ///
+    /// A tab dragged to the right lands after the tab you drop it on, and one dragged to the
+    /// left lands before it. That is where the pointer is, either way.
+    @discardableResult
+    func moveTab(id: QueryTab.ID, onto targetID: QueryTab.ID) -> Bool {
+        guard id != targetID,
+              let from = tabs.firstIndex(where: { $0.id == id }),
+              let to = tabs.firstIndex(where: { $0.id == targetID })
+        else { return false }
+
+        let tab = tabs.remove(at: from)
+        // The same index serves both ways. Taking a tab out from the left of the target moves
+        // the target one place down, so this index is the place after it. Taking one out from
+        // the right leaves the target where it was, so the index is the place before it.
+        tabs.insert(tab, at: to)
+        saveSession()
+        return true
+    }
+
     func closeTab(id: QueryTab.ID) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         tabs.remove(at: index)
