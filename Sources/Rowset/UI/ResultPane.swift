@@ -111,7 +111,8 @@ struct ResultPane: View {
             onNeedFullRow: { await model.loadFullRow($0, in: tab) },
             onOpenValue: { tab.showsValuePane = true },
             onSortChange: onSortChange,
-            editing: editable ? tab : nil)
+            editing: editable ? tab : nil,
+            layout: tab)
     }
 }
 

@@ -282,6 +282,17 @@ final class QueryTab: Identifiable {
         edits.removeAll()
     }
 
+    /// How wide each column stands, by column name.
+    ///
+    /// The grid is one `NSView`, and two tabs may share it or lose it to a rebuild. Neither keeps
+    /// what AppKit holds, so the tab keeps it instead. The name is the key, because a column id
+    /// is only a position and a new statement can move it.
+    ///
+    /// These are read while the grid draws and never by a view, so a write must wake nobody.
+    @ObservationIgnored var columnWidths: [String: CGFloat] = [:]
+    /// Where the grid stands, so a tab comes back where you left it.
+    @ObservationIgnored var scrollOffset: CGPoint = .zero
+
     /// Drops what the catalog said, so the next run reads it again.
     ///
     /// The table itself may change while a tab stands on it. The column list is read once and

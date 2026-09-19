@@ -25,11 +25,22 @@ struct ResultTableView: NSViewRepresentable {
     var onSortChange: () -> Void = {}
     /// The tab that owns the edits. `nil` means the grid is read only.
     var editing: QueryTab?
+    /// The tab that keeps the column widths and the scroll position.
+    var layout: QueryTab?
 
     static let rowHeight: CGFloat = 22
+    /// How wide a column stands before anybody moves its handle.
+    static let defaultColumnWidth: CGFloat = 170
 
     func makeCoordinator() -> Coordinator {
         return Coordinator(self)
+    }
+
+    /// SwiftUI drops the grid when a console takes the tab area. What AppKit held goes to the
+    /// tab first, so the tab brings it back.
+    static func dismantleNSView(_ nsView: NSScrollView, coordinator: Coordinator) {
+        guard let tab = coordinator.parent.layout else { return }
+        coordinator.store(into: tab)
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -116,6 +127,11 @@ struct ResultTableView: NSViewRepresentable {
         weak var cellMenu: NSMenu?
         weak var headerMenu: NSMenu?
 
+        private var shownTabID: UUID?
+        /// True while the code sets the widths itself. AppKit reports each one as a resize, and
+        /// a resize writes into the tab, so without this the tab would learn back what it just
+        /// replaced and the rest of the loop would read it.
+        private var isSettingWidths = false
         private var shownResultID: UUID?
         private var shownRevision = 0
         private var shownColumnNames: [String] = []
@@ -128,8 +144,30 @@ struct ResultTableView: NSViewRepresentable {
         }
 
         func apply(_ parent: ResultTableView) {
+            let previous = self.parent.layout
             self.parent = parent
             guard let tableView else { return }
+
+            // Another tab takes the grid over. Its own widths and its own place go on, and the
+            // tab that had them keeps what it left.
+            var takenOver = false
+            if parent.layout?.id != shownTabID {
+                if let previous, previous.id == shownTabID { store(into: previous) }
+                shownTabID = parent.layout?.id
+                takenOver = true
+            }
+            // After the columns stand, whichever way this call ends. A scroll set before them
+            // has nothing to scroll over and lands back at the first column.
+            defer {
+                if takenOver {
+                    applyColumnWidths()
+                    // The rows go and come back. Marking them leaves the moment and the area to
+                    // AppKit, and a row that repaints only part of itself keeps the column edges
+                    // of the tab before this one. A tab switch is rare enough to pay for this.
+                    tableView.reloadData()
+                    restoreScroll()
+                }
+            }
 
             let names = parent.result.columns.map(\.name)
             if names != shownColumnNames {
@@ -218,6 +256,8 @@ struct ResultTableView: NSViewRepresentable {
 
         func rebuildColumns() {
             guard let tableView else { return }
+            isSettingWidths = true
+            defer { isSettingWidths = false }
             for column in tableView.tableColumns { tableView.removeTableColumn(column) }
 
             for column in parent.result.columns {
@@ -227,6 +267,8 @@ struct ResultTableView: NSViewRepresentable {
                 tableColumn.minWidth = 50
                 tableColumn.maxWidth = 4_000
                 tableColumn.resizingMask = .userResizingMask
+                tableColumn.width =
+                    parent.layout?.columnWidths[column.name] ?? ResultTableView.defaultColumnWidth
                 tableColumn.headerToolTip = "\(column.name) — \(column.typeName.lowercased())"
                 // The prototype gives the header its sort arrow. The server does the sorting.
                 tableColumn.sortDescriptorPrototype =
@@ -294,7 +336,64 @@ struct ResultTableView: NSViewRepresentable {
         /// as its columns are narrower than the scroll view, so nothing else asks the rows below
         /// the handle to follow.
         func tableViewColumnDidResize(_ notification: Notification) {
-            tableView?.enumerateAvailableRowViews { rowView, _ in rowView.needsDisplay = true }
+            // A tab taking the grid over sets the widths itself, and it marks the rows once it
+            // is done. Drawing from here as well would draw inside a SwiftUI update.
+            guard !isSettingWidths else { return }
+
+            // Draw the rows now, over the whole width you can see. Marking them leaves the
+            // moment to AppKit, and while a handle moves it keeps what the layer holds and
+            // repaints a strip. One view draws every cell of a row, so the cells outside that
+            // strip would keep the column edges they had.
+            tableView?.enumerateAvailableRowViews { rowView, _ in
+                let visible = rowView.visibleRect
+                guard !visible.isEmpty else { return }
+                rowView.display(visible)
+            }
+
+            guard let layout = parent.layout, layout.id == shownTabID else { return }
+            store(into: layout)
+        }
+
+        /// Writes what AppKit holds into the tab, so the tab can give it back.
+        func store(into tab: QueryTab) {
+            guard let tableView else { return }
+            for column in tableView.tableColumns {
+                tab.columnWidths[column.title] = column.width
+            }
+            if let clip = tableView.enclosingScrollView?.contentView {
+                tab.scrollOffset = clip.bounds.origin
+            }
+        }
+
+        /// A column the tab says nothing about goes back to the default. Leaving it alone would
+        /// hand the tab the width of the tab before it.
+        private func applyColumnWidths() {
+            guard let tableView, let layout = parent.layout else { return }
+            let widths = layout.columnWidths
+            isSettingWidths = true
+            defer { isSettingWidths = false }
+            for column in tableView.tableColumns {
+                column.width = widths[column.title] ?? ResultTableView.defaultColumnWidth
+            }
+            // The header follows a width of its own accord. The cells are drawn by the row, and
+            // the row has to hear about it.
+            tableView.enumerateAvailableRowViews { rowView, _ in rowView.needsDisplay = true }
+        }
+
+        /// Puts the grid back where the tab left it.
+        ///
+        /// It scrolls through the table and not through the clip view. A scroll view carries a
+        /// second clip view for the header, and it moves that one only for a scroll that comes
+        /// through the document view. Moving the content clip by itself leaves the header beside
+        /// its columns until the next scroll pulls it back in line.
+        private func restoreScroll() {
+            guard let layout = parent.layout,
+                  let tableView,
+                  let scrollView = tableView.enclosingScrollView
+            else { return }
+            tableView.scroll(layout.scrollOffset)
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+            tableView.headerView?.needsDisplay = true
         }
 
         // MARK: Clicks
