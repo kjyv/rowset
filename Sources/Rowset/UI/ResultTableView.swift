@@ -869,7 +869,7 @@ struct ResultTableView: NSViewRepresentable {
 }
 
 /// Carries a closure into an `NSMenuItem`.
-private final class BlockBox {
+final class BlockBox {
     private let action: () -> Void
     init(_ action: @escaping () -> Void) { self.action = action }
     func run() { action() }

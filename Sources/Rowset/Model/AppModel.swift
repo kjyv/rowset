@@ -23,9 +23,7 @@ struct SSOPrompt: Identifiable {
 
 /// What the sidebar has selected.
 ///
-/// A bookmark row and a tree row are different things, so one type names both. Without a tag of
-/// its own, a tree row fell back to the row of its connection, and the highlight then covered the
-/// whole group.
+/// A bookmark row and a tree row are different things, so one type names both.
 enum SidebarSelection: Hashable {
     case bookmark(UUID)
     case node(id: UUID, bookmarkID: UUID)
@@ -431,8 +429,16 @@ final class AppModel {
             }
 
         case .schema:
-            node.isExpanded.toggle()
+            setExpanded(!node.isExpanded, node: node, in: connection)
         }
+    }
+
+    /// Opens or closes a tree row, and loads its rows the first time it opens.
+    func setExpanded(_ expanded: Bool, node: TreeNode, in connection: ConnectionModel) {
+        node.isExpanded = expanded
+        saveSession()
+        guard expanded else { return }
+        Task { await connection.loadChildren(of: node) }
     }
 
     func open(_ table: TableRef, in connection: ConnectionModel) {
