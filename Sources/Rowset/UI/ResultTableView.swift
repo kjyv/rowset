@@ -1155,7 +1155,8 @@ final class OverdrawTableView: NSTableView {
         }
 
         if event.keyCode == 36 {
-            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            // Caps Lock does not change what Return does.
+            let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
             if modifiers == .shift, onShiftReturn != nil {
                 onShiftReturn?()
                 return

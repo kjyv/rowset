@@ -120,4 +120,21 @@ final class CellMovementTests: XCTestCase {
         XCTAssertNil(step(0, "a"))
         XCTAssertNil(step(1, "s"))
     }
+
+    // MARK: - Return
+
+    /// Caps Lock changes no meaning. Return still edits, and Shift-Return still opens the value.
+    func testCapsLockKeepsReturn() {
+        let table = OverdrawTableView()
+        var returns = 0
+        var shiftReturns = 0
+        table.onReturn = { returns += 1 }
+        table.onShiftReturn = { shiftReturns += 1 }
+
+        table.keyDown(with: event(keyCode: 36, characters: "\r", modifiers: .capsLock))
+        table.keyDown(with: event(keyCode: 36, characters: "\r", modifiers: [.capsLock, .shift]))
+
+        XCTAssertEqual(returns, 1)
+        XCTAssertEqual(shiftReturns, 1)
+    }
 }
